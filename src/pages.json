@@ -1,0 +1,83 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "接单管家"
+      }
+    },
+    {
+      "path": "pages/quote/list",
+      "style": {
+        "navigationBarTitleText": "报价单"
+      }
+    },
+    {
+      "path": "pages/quote/detail",
+      "style": {
+        "navigationBarTitleText": "报价详情"
+      }
+    },
+    {
+      "path": "pages/customer/list",
+      "style": {
+        "navigationBarTitleText": "客户"
+      }
+    },
+    {
+      "path": "pages/customer/detail",
+      "style": {
+        "navigationBarTitleText": "客户详情"
+      }
+    },
+    {
+      "path": "pages/project/list",
+      "style": {
+        "navigationBarTitleText": "项目"
+      }
+    },
+    {
+      "path": "pages/project/detail",
+      "style": {
+        "navigationBarTitleText": "项目详情"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "接单管家",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F5F6FA"
+  },
+  "tabBar": {
+    "color": "#8A8F99",
+    "selectedColor": "#2B6BFF",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/quote/list",
+        "text": "报价"
+      },
+      {
+        "pagePath": "pages/customer/list",
+        "text": "客户"
+      },
+      {
+        "pagePath": "pages/project/list",
+        "text": "项目"
+      }
+    ]
+  }
+}
