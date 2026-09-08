@@ -1,11 +1,12 @@
 <template>
   <view class="login-page">
-    <view class="hero">
-      <view class="logo">接单管家</view>
-      <view class="slogan">报价、客户、项目，一屏管清</view>
-    </view>
+    <view class="center-wrap">
+      <view class="hero">
+        <view class="logo">接单管家</view>
+        <view class="slogan">报价、客户、项目，一屏管清</view>
+      </view>
 
-    <view class="form-card">
+      <view class="form-card">
       <view class="field">
         <text class="label">手机号</text>
         <input
@@ -18,19 +19,23 @@
         />
       </view>
 
-      <button class="btn-primary" :loading="store.loggingIn" :disabled="!canSubmit" @tap="onLogin">
-        手机号登录
-      </button>
+      <view
+        class="btn-primary"
+        :class="canSubmit ? 'btn-active' : 'btn-disabled'"
+        :hover-class="canSubmit ? 'btn-hover' : 'none'"
+        @tap="onLogin"
+      >
+        <text>{{ store.loggingIn ? '登录中…' : '手机号登录' }}</text>
+      </view>
 
-      <view class="tips">
-        <text>MVP 开发期支持手动输入手机号</text>
-        <text>正式版将通过微信 getPhoneNumber 一键获取</text>
       </view>
     </view>
 
     <view class="agreement">
       <text>登录即代表同意《用户协议》与《隐私政策》</text>
     </view>
+
+    <view class="bottom-line"></view>
   </view>
 </template>
 
@@ -58,12 +63,22 @@ async function onLogin() {
 <style lang="scss" scoped>
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #2b6bff 0%, #1d4ed8 42%, #f5f6fa 42.1%);
+  background: linear-gradient(180deg, #447cfd 0%, #2054e0 33%, #f5f6fa 33.1%);
   padding: 0 48rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.center-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 252rpx;
 }
 
 .hero {
-  padding-top: 200rpx;
   text-align: center;
   color: #fff;
 }
@@ -81,7 +96,7 @@ async function onLogin() {
 }
 
 .form-card {
-  margin-top: 120rpx;
+  margin-top: 94rpx;
   background: #fff;
   border-radius: 24rpx;
   padding: 48rpx 40rpx;
@@ -105,27 +120,40 @@ async function onLogin() {
 
 .input {
   flex: 1;
+  height: 80rpx;
   font-size: 30rpx;
+  background: #f5f6fa;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  box-sizing: border-box;
 }
 
 .ph {
-  color: #b6bcc6;
+  color: #9ca3af;
+  font-size: 28rpx;
 }
 
 .btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 92rpx;
-  line-height: 92rpx;
-  background: #2b6bff;
-  color: #fff;
+  background: #e8ebf0;
+  color: #5b6472;
   font-size: 32rpx;
   font-weight: 600;
   border-radius: 16rpx;
+  transition: background-color 0.2s, color 0.2s;
+}
 
-  &[disabled] {
-    opacity: 0.5;
-    color: #fff;
-  }
+.btn-active {
+  background: #2b6bff;
+  color: #fff;
+}
+
+.btn-hover {
+  opacity: 0.9;
 }
 
 .tips {
@@ -139,9 +167,19 @@ async function onLogin() {
 }
 
 .agreement {
-  margin-top: 64rpx;
+  margin-top: 24rpx;
+  padding-bottom: 48rpx;
   text-align: center;
   font-size: 24rpx;
   color: #9ca3af;
+}
+
+.bottom-line {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 6rpx;
+  background: #0d99ff;
 }
 </style>
