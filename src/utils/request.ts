@@ -19,6 +19,7 @@ interface RequestOptions {
   data?: unknown
   auth?: boolean // 是否携带 token，默认 true
   silent?: boolean // 静默模式：不弹 toast（用于登录失败等需自主提示场景）
+  keepAuthOn401?: boolean // 401 时保留登录态交由调用方处理（不弹窗 / 不清 token / 不跳登录），用于无权限类接口的页面级提示
 }
 
 function getErrorMsg(err: unknown): string {
@@ -36,7 +37,14 @@ function getErrorMsg(err: unknown): string {
 export async function request<T = unknown>(
   options: RequestOptions
 ): Promise<ApiResult<T>> {
-  const { url, method = 'GET', data, auth = true, silent = false } = options
+  const {
+    url,
+    method = 'GET',
+    data,
+    auth = true,
+    silent = false,
+    keepAuthOn401 = false
+  } = options
 
   const header: Record<string, string> = {
     'Content-Type': 'application/json'
@@ -69,6 +77,10 @@ export async function request<T = unknown>(
 
   // 401：登录失效
   if (statusCode === 401) {
+    // 无权限类接口：保留登录态，由页面自行提示（如管理后台提示无权限）
+    if (keepAuthOn401) {
+      return { ok: false, error: body?.error || '未授权', statusCode }
+    }
     storage.clearToken()
     if (!silent) {
       uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
