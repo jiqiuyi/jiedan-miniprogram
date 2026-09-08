@@ -1,101 +1,127 @@
 <template>
   <view class="page">
-    <view v-if="loading" class="empty">加载中...</view>
-    <view v-else-if="project" class="content">
-      <view class="head-card">
-        <view class="head-title">{{ project.title || '未命名项目' }}</view>
-        <view class="head-amount">
-          <text class="amount-symbol">¥</text>
-          <text class="amount-num">{{ formatAmount(project.amount_total) }}</text>
+    <template v-if="project">
+      <view class="hero card">
+        <view class="hero-row">
+          <text class="hero-title">{{ project.title || '未命名项目' }}</text>
+          <text class="status-badge" :style="statusStyle">{{ statusText }}</text>
         </view>
-        <view class="head-flags">
-          <text class="flag" :class="'flag-' + statusKey">{{ statusText(project.status) }}</text>
-          <text class="flag flag-default">{{ project.status === 2 ? '已收款' : '未收款' }}</text>
-        </view>
-      </view>
-
-      <view class="card">
-        <view class="info-row">
-          <text class="info-label">客户</text>
-          <text class="info-value link" @tap="gotoCustomer(project.customer_id)">{{ customerName }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">开始时间</text>
-          <text class="info-value">{{ formatDate(project.start_time) }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">截止时间</text>
-          <text class="info-value">{{ formatDate(project.deadline) }}</text>
-        </view>
-        <view class="info-row" v-if="project.remark">
-          <text class="info-label">备注</text>
-          <text class="info-value">{{ project.remark }}</text>
+        <text class="hero-sub">{{ customerName }} · 约定金额</text>
+        <text class="hero-amount">¥{{ formatAmount(project.amount_total) }}</text>
+        <view class="hero-actions">
+          <view class="btn ghost" @tap="goEdit">编辑</view>
+          <view class="btn danger-ghost" @tap="confirmDelete">删除</view>
         </view>
       </view>
 
-      <view class="section-title">关联报价</view>
-      <view v-if="!relatedQuotes.length" class="empty small">无关联报价</view>
-      <view v-for="q in relatedQuotes" :key="q.id" class="rel-card" @tap="gotoQuote(q.id)">
-        <text class="rel-title">{{ q.title || '未命名报价' }}</text>
-        <text class="rel-amount">¥{{ formatAmount(q.total) }}</text>
+      <view class="section-head">
+        <text class="section-title">收款记录</text>
+        <text class="section-total">已收 ¥{{ formatAmount(paidTotal) }}</text>
       </view>
-    </view>
-    <view v-else class="empty">项目不存在或已被删除</view>
+      <view v-if="!payments.length" class="empty card">暂无收款记录</view>
+      <view v-else class="pay-list">
+        <view v-for="pay in payments" :key="String(pay.id)" class="pay-card card">
+          <view class="pay-main">
+            <text class="pay-type">{{ payTypeLabel(pay) }}</text>
+            <text class="pay-note">{{ pay.note || formatDate(pay.paid_at) }}</text>
+          </view>
+          <view class="pay-right">
+            <text class="pay-amount">+¥{{ formatAmount(pay.amount) }}</text>
+            <text class="pay-date">{{ formatDate(pay.paid_at) }}</text>
+          </view>
+        </view>
+      </view>
+    </template>
+    <view v-else-if="!loading" class="empty card">项目不存在或已删除</view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useDataStore } from '@/store/data'
 import { useUserStore } from '@/store/user'
-import { formatAmount, formatDate, projectStatusText } from '@/utils/format'
-import type { Quote } from '@/utils/types'
+import { formatAmount, formatDate, payTypeText, projectStatusText } from '@/utils/format'
+import type { Project, Customer, Payment, DataRow } from '@/utils/types'
 
 const data = useDataStore()
 const user = useUserStore()
-const id = ref(0)
-const loading = ref(true)
 
-const project = computed(() => data.findById(data.projects, id.value))
-const statusKey = computed(() => Number(project.value?.status ?? 0))
+const projectId = ref(0)
+const loading = ref(true)
+const project = ref<Project | null>(null)
+
+const statusMeta: Record<number, { text: string; color: string }> = {
+  0: { text: '接单', color: '#4A5AF0' },
+  1: { text: '制作中', color: '#16A085' },
+  2: { text: '待收尾款', color: '#E67E22' },
+  3: { text: '完结', color: '#8A93A6' }
+}
+
+const statusText = computed(() => projectStatusText(project.value?.status))
+const statusStyle = computed(() => {
+  const s = Number(project.value?.status ?? 0)
+  const color = statusMeta[s]?.color || '#8A93A6'
+  return { color, backgroundColor: `${color}1A` }
+})
 
 const customerName = computed(() => {
-  const c = project.value?.customer_id != null
-    ? data.findById(data.customers, project.value.customer_id)
-    : undefined
-  return c?.name || '未关联客户'
+  const p = project.value as DataRow | null
+  const c = p ? data.findById(data.customers as unknown as Customer[], Number(p.customer_id ?? 0)) : undefined
+  return (c as Customer | undefined)?.name || '未关联客户'
 })
 
-const relatedQuotes = computed(() =>
-  (data.quotes as Quote[]).filter((q) => Number(q.project_id) === id.value)
+const payments = computed(
+  () => (data.payments as Payment[]).filter((p) => Number(p.project_id) === projectId.value) || []
 )
 
-onLoad((opt) => {
-  id.value = Number(opt?.id || 0)
-})
+const paidTotal = computed(() =>
+  payments.value.reduce((s, p) => s + Number(p.amount ?? 0), 0)
+)
 
-onShow(async () => {
+function payTypeLabel(p: Payment): string {
+  return payTypeText((p as DataRow).type, (p as DataRow).type_label)
+}
+
+async function load() {
   if (!user.isLoggedIn) {
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
   await data.refresh()
+  project.value =
+    ((data.projects as Project[]).find((r) => Number(r.id) === projectId.value) as Project) || null
   loading.value = false
+}
+
+onLoad((q) => {
+  projectId.value = Number(q?.id ?? 0)
 })
 
-function statusText(s: unknown) {
-  return projectStatusText(s == null ? undefined : Number(s))
+onShow(() => {
+  load()
+})
+
+function goEdit() {
+  uni.navigateTo({ url: `/pages/project/form?id=${projectId.value}` })
 }
 
-function gotoCustomer(cid: number | undefined) {
-  if (cid) {
-    uni.navigateTo({ url: `/pages/customer/detail?id=${cid}` })
-  }
-}
-
-function gotoQuote(qid: number) {
-  uni.navigateTo({ url: `/pages/quote/detail?id=${qid}` })
+function confirmDelete() {
+  const p = project.value
+  if (!p) return
+  uni.showModal({
+    title: '删除项目',
+    content: `确定删除项目"${p.title || ''}"吗？\n其名下全部收款记录将一并删除，不可恢复。`,
+    confirmColor: '#E74C3C',
+    success: async (res) => {
+      if (!res.confirm) return
+      const ok = await data.removeProject(projectId.value)
+      if (ok) {
+        uni.showToast({ title: '已删除', icon: 'success' })
+        setTimeout(() => uni.navigateBack(), 400)
+      }
+    }
+  })
 }
 </script>
 
@@ -104,131 +130,140 @@ function gotoQuote(qid: number) {
   padding: 24rpx;
 }
 
-.empty {
-  padding-top: 200rpx;
-  text-align: center;
-  color: #9ca3af;
-  font-size: 28rpx;
-
-  &.small {
-    padding: 40rpx 0;
-  }
-}
-
-.head-card {
-  background: linear-gradient(135deg, #2b6bff, #5b8dff);
-  border-radius: 24rpx;
-  padding: 40rpx;
-  color: #fff;
-  margin-bottom: 24rpx;
-}
-
-.head-title {
-  font-size: 36rpx;
-  font-weight: 700;
-}
-
-.head-amount {
-  margin-top: 16rpx;
-  display: flex;
-  align-items: baseline;
-}
-
-.amount-symbol {
-  font-size: 28rpx;
-}
-
-.amount-num {
-  font-size: 56rpx;
-  font-weight: 700;
-}
-
-.head-flags {
-  margin-top: 20rpx;
-  display: flex;
-  gap: 16rpx;
-}
-
-.flag {
-  font-size: 22rpx;
-  padding: 6rpx 20rpx;
-  border-radius: 24rpx;
-}
-
-.flag-1 {
-  background: rgba(255, 255, 255, 0.25);
-  color: #fff;
-}
-
-.flag-0 {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-}
-
-.flag-default {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-}
-
 .card {
   background: #fff;
   border-radius: 20rpx;
-  padding: 12rpx 28rpx;
-  box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
-}
-
-.info-row {
-  display: flex;
-  padding: 22rpx 0;
-  border-bottom: 2rpx solid #f5f6fa;
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.info-label {
-  width: 160rpx;
-  font-size: 26rpx;
-  color: #6b7280;
-}
-
-.info-value {
-  flex: 1;
-  font-size: 26rpx;
-  color: #1f2430;
-}
-
-.link {
-  color: #2b6bff;
-}
-
-.section-title {
-  margin: 32rpx 8rpx 16rpx;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1f2430;
-}
-
-.rel-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 24rpx 28rpx;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  padding: 28rpx;
   margin-bottom: 16rpx;
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
-.rel-title {
-  font-size: 28rpx;
+.hero-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f2430;
+  flex: 1;
+  margin-right: 16rpx;
+}
+
+.hero-row {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge {
+  font-size: 22rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.hero-sub {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 24rpx;
+  color: #8a93a6;
+}
+
+.hero-amount {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #4a5af0;
+}
+
+.hero-actions {
+  margin-top: 28rpx;
+  display: flex;
+  gap: 20rpx;
+}
+
+.btn {
+  padding: 14rpx 48rpx;
+  border-radius: 36rpx;
+  font-size: 26rpx;
+  text-align: center;
+}
+
+.ghost {
+  border: 1rpx solid #4a5af0;
+  color: #4a5af0;
+}
+
+.danger-ghost {
+  border: 1rpx solid rgba(231, 76, 60, 0.5);
+  color: #e74c3c;
+}
+
+.section-head {
+  margin: 28rpx 4rpx 16rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
   color: #1f2430;
 }
 
-.rel-amount {
+.section-total {
+  font-size: 26rpx;
+  color: #16a085;
+}
+
+.empty {
+  color: #9ca3af;
+  text-align: center;
+  font-size: 28rpx;
+  padding-top: 60rpx;
+  padding-bottom: 60rpx;
+}
+
+.pay-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pay-card {
+  display: flex;
+  align-items: center;
+}
+
+.pay-type {
   font-size: 28rpx;
   font-weight: 600;
-  color: #2b6bff;
+  color: #1f2430;
+}
+
+.pay-note {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pay-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.pay-amount {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #16a085;
+}
+
+.pay-date {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #9ca3af;
 }
 </style>

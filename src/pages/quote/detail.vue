@@ -1,118 +1,216 @@
 <template>
   <view class="page">
-    <view v-if="loading" class="empty">加载中...</view>
-
-    <block v-else-if="quote">
-      <view class="quote-head">
-        <view class="head-title">{{ quote.title || '未命名报价' }}</view>
-        <view class="head-amount">
-          <text class="amount-symbol">¥</text>
-          <text class="amount-num">{{ formatAmount(quote.total) }}</text>
+    <template v-if="quote">
+      <view class="hero card">
+        <view class="hero-row">
+          <text class="hero-title">{{ quote.title || '未命名报价' }}</text>
+          <text class="status-badge" :style="statusStyle">{{ statusText }}</text>
         </view>
-        <view class="head-sub">共 {{ lineItems.length }} 项 · {{ taxText }}</view>
+        <view class="tag-row">
+          <text class="tag" @tap="goCustomer">{{ customerName || '未关联客户' }}</text>
+          <text v-if="projectName" class="tag link" @tap="goProject">{{ projectName }}</text>
+        </view>
+        <text class="hero-amount">¥{{ formatAmount(total) }}</text>
+        <view class="hero-actions">
+          <view class="btn ghost" @tap="goEdit">编辑</view>
+          <view class="btn danger-ghost" @tap="confirmDelete">删除</view>
+        </view>
       </view>
 
+      <view class="section-head">
+        <text class="section-title">报价明细</text>
+        <text class="section-count">{{ lines.length ? `共 ${lines.length} 项` : '无明细' }}</text>
+      </view>
+      <view v-if="!lines.length" class="empty card">该报价单无逐项明细</view>
+      <view v-else class="list">
+        <view v-for="(l, i) in lines" :key="i" class="line-card card">
+          <view class="line-main">
+            <text class="line-name">{{ l.itemName || '未命名项' }}</text>
+            <text class="line-desc">{{ descOf(l) }}</text>
+          </view>
+          <text class="line-amount">¥{{ formatAmount(subtotalOf(l)) }}</text>
+        </view>
+      </view>
+
+      <view class="section-head">
+        <text class="section-title">标头信息</text>
+      </view>
       <view class="card info-card">
         <view class="info-row">
-          <text class="info-label">客户</text>
-          <text class="info-value">{{ customerName }}</text>
+          <text class="info-label">报价类型</text>
+          <text class="info-value">{{ typeLabel }}</text>
         </view>
         <view class="info-row">
-          <text class="info-label">关联项目</text>
-          <text class="info-value">{{ projectName }}</text>
+          <text class="info-label">税率</text>
+          <text class="info-value">{{ taxRate }}%</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">金额口径</text>
+          <text class="info-value">{{ taxIncludeText(taxInclude) }}</text>
         </view>
         <view class="info-row">
           <text class="info-label">创建时间</text>
-          <text class="info-value">{{ formatDateTime(quote.create_time) }}</text>
+          <text class="info-value">{{ formatDateTime(createdAt) }}</text>
         </view>
-        <view class="info-row" v-if="quote.remark">
+        <view class="info-row" v-if="note">
           <text class="info-label">备注</text>
-          <text class="info-value">{{ quote.remark }}</text>
+          <text class="info-value note-text">{{ note }}</text>
         </view>
       </view>
-
-      <view class="card items-card" v-if="lineItems.length">
-        <view class="card-title">报价明细</view>
-        <view v-for="(item, i) in lineItems" :key="i" class="item-row">
-          <view class="item-info">
-            <text class="item-name">{{ item.name || item.title || `条目 ${i + 1}` }}</text>
-            <text class="item-desc">{{ item.spec || item.desc || '' }}</text>
-          </view>
-          <view class="item-right">
-            <text class="item-price">¥{{ formatAmount(item.price ?? item.amount) }}</text>
-            <text class="item-qty" v-if="item.qty">×{{ item.qty }}</text>
-          </view>
-        </view>
-      </view>
-
-      <button class="share-btn" open-type="share">分享给客户</button>
-    </block>
-
-    <view v-else class="empty">报价不存在或已被删除</view>
+    </template>
+    <view v-else-if="!loading" class="empty card">报价单不存在或已删除</view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { onLoad, onShow, onShareAppMessage } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useDataStore } from '@/store/data'
 import { useUserStore } from '@/store/user'
-import { formatAmount, formatDateTime } from '@/utils/format'
-import type { QuoteItem } from '@/utils/types'
+import {
+  formatAmount,
+  formatDateTime,
+  quoteStatusText,
+  taxIncludeText
+} from '@/utils/format'
+import type { Quote, Customer, Project, DataRow } from '@/utils/types'
 
 const data = useDataStore()
 const user = useUserStore()
-const id = ref<number>(0)
+
+const quoteId = ref(0)
 const loading = ref(true)
+const quote = ref<Quote | null>(null)
 
-const quote = computed(() => data.findById(data.quotes, id.value))
-const customer = computed(() =>
-  quote.value?.customer_id != null
-    ? data.findById(data.customers, quote.value.customer_id)
-    : undefined
+const STATUS_COLOR: Record<number, string> = {
+  0: '#8A93A6',
+  1: '#4A5AF0',
+  2: '#16A085',
+  3: '#E67E22',
+  4: '#C0392B'
+}
+
+interface QLine {
+  itemName?: string
+  hours?: number
+  hourRate?: number
+  materialFee?: number
+}
+
+function num(v: unknown): number {
+  const n = Number(v ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function rowOf(q: Quote): DataRow {
+  return q as DataRow
+}
+
+const total = computed(() => num(rowOf(quote.value as Quote)['total']))
+const taxRate = computed(() => num(rowOf(quote.value as Quote)['tax_rate']))
+const taxInclude = computed(() => num(rowOf(quote.value as Quote)['tax_include']))
+const createdAt = computed(() => num(rowOf(quote.value as Quote)['created_at']))
+const note = computed(() => String(rowOf(quote.value as Quote)['note'] ?? ''))
+
+const statusText = computed(() => quoteStatusText(num(rowOf(quote.value as Quote)['status'])))
+const statusStyle = computed(() => {
+  const s = num(rowOf(quote.value as Quote)['status'])
+  const color = STATUS_COLOR[s] || '#8A93A6'
+  return { color, backgroundColor: `${color}1A` }
+})
+
+const typeLabel = computed(() =>
+  String(rowOf(quote.value as Quote)['quote_type'] ?? '') === 'full' ? '详细报价' : '报价单'
 )
-const project = computed(() =>
-  quote.value?.project_id != null
-    ? data.findById(data.projects, quote.value.project_id)
-    : undefined
-)
 
-const customerName = computed(() => customer.value?.name || '未关联客户')
-const projectName = computed(() => project.value?.title || '未关联项目')
-const taxText = computed(() => (Number(quote.value?.tax_rate ?? 0) > 0 ? '含税' : '不含税'))
+const customerName = computed(() => {
+  const c = data.findById(
+    data.customers as unknown as Customer[],
+    num(rowOf(quote.value as Quote)['customer_id'])
+  )
+  return (c as Customer | undefined)?.name || ''
+})
 
-// 明细行：优先 items 字段；否则回退单行（用报价单本身信息兜底）
-const lineItems = computed<QuoteItem[]>(() => {
-  const items = quote.value?.items
-  if (Array.isArray(items) && items.length) return items
-  if (quote.value) {
-    return [{ name: quote.value.title || '报价项', price: quote.value.total }]
+const projectName = computed(() => {
+  const p = data.findById(
+    data.projects as unknown as Project[],
+    num(rowOf(quote.value as Quote)['project_id'])
+  )
+  return (p as Project | undefined)?.title || ''
+})
+
+const lines = computed<QLine[]>(() => {
+  const raw = String(rowOf(quote.value as Quote)['lines_json'] ?? '[]')
+  try {
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? (arr as QLine[]) : []
+  } catch {
+    return []
   }
-  return []
 })
 
-onLoad((opt) => {
-  id.value = Number(opt?.id || 0)
-})
+function descOf(l: QLine): string {
+  const parts: string[] = []
+  if (num(l.hours) > 0) parts.push(`工时 ${l.hours}h`)
+  if (num(l.hourRate) > 0) parts.push(`单价 ¥${formatAmount(num(l.hourRate))}/h`)
+  if (num(l.materialFee) > 0) parts.push(`材料 ¥${formatAmount(num(l.materialFee))}`)
+  return parts.join(' · ') || '—'
+}
 
-onShow(async () => {
+function subtotalOf(l: QLine): number {
+  return Math.round(num(l.hours) * num(l.hourRate)) + num(l.materialFee)
+}
+
+async function load() {
   if (!user.isLoggedIn) {
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
   await data.refresh()
+  quote.value =
+    ((data.quotes as Quote[]).find((r) => Number(r.id) === quoteId.value) as Quote) || null
   loading.value = false
+}
+
+onLoad((q) => {
+  quoteId.value = Number(q?.id ?? 0)
 })
 
-// 分享回调：展示报价摘要，客户打开走单独分享落地页
-onShareAppMessage(() => {
-  const q = quote.value
-  return {
-    title: `${q?.title || '报价单'} - ${formatAmount(q?.total)}`,
-    path: `/pages/quote/detail?id=${id.value}&share=1`,
-    imageUrl: '/static/share-default.png'
-  }
+onShow(() => {
+  load()
 })
+
+function goEdit() {
+  uni.navigateTo({ url: `/pages/quote/form?id=${quoteId.value}` })
+}
+
+function goCustomer() {
+  const id = num(rowOf(quote.value as Quote)['customer_id'])
+  if (id > 0) uni.navigateTo({ url: `/pages/customer/detail?id=${id}` })
+}
+
+function goProject() {
+  const id = num(rowOf(quote.value as Quote)['project_id'])
+  if (id > 0) uni.navigateTo({ url: `/pages/project/detail?id=${id}` })
+}
+
+function confirmDelete() {
+  const q = quote.value
+  if (!q) return
+  uni.showModal({
+    title: '删除报价单',
+    content: `确定删除报价单"${q.title || ''}"吗？删除后不可恢复。`,
+    confirmColor: '#E74C3C',
+    success: async (res) => {
+      if (!res.confirm) return
+      const ok = await data.removeQuote(quoteId.value)
+      if (ok) {
+        uni.showToast({ title: '已删除', icon: 'success' })
+        setTimeout(() => uni.navigateBack(), 400)
+      }
+    }
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -120,59 +218,144 @@ onShareAppMessage(() => {
   padding: 24rpx;
 }
 
-.empty {
-  padding-top: 200rpx;
-  text-align: center;
-  color: #9ca3af;
-  font-size: 28rpx;
-}
-
-.quote-head {
-  background: linear-gradient(135deg, #2b6bff, #5b8dff);
-  border-radius: 24rpx;
-  padding: 40rpx;
-  color: #fff;
-  margin-bottom: 24rpx;
-}
-
-.head-title {
-  font-size: 36rpx;
-  font-weight: 700;
-}
-
-.head-amount {
-  margin-top: 20rpx;
-  display: flex;
-  align-items: baseline;
-}
-
-.amount-symbol {
-  font-size: 32rpx;
-}
-
-.amount-num {
-  font-size: 60rpx;
-  font-weight: 700;
-}
-
-.head-sub {
-  margin-top: 12rpx;
-  font-size: 24rpx;
-  opacity: 0.85;
-}
-
 .card {
   background: #fff;
   border-radius: 20rpx;
   padding: 28rpx;
+  margin-bottom: 16rpx;
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
-  margin-bottom: 24rpx;
+}
+
+.hero-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f2430;
+  flex: 1;
+  margin-right: 16rpx;
+}
+
+.hero-row {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge {
+  font-size: 22rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.tag-row {
+  margin-top: 14rpx;
+  display: flex;
+  gap: 14rpx;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 24rpx;
+  color: #8a93a6;
+  background: #f2f4fa;
+  padding: 6rpx 18rpx;
+  border-radius: 24rpx;
+}
+
+.tag.link {
+  color: #4a5af0;
+}
+
+.hero-amount {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #4a5af0;
+}
+
+.hero-actions {
+  margin-top: 28rpx;
+  display: flex;
+  gap: 20rpx;
+}
+
+.btn {
+  padding: 14rpx 48rpx;
+  border-radius: 36rpx;
+  font-size: 26rpx;
+  text-align: center;
+}
+
+.ghost {
+  border: 1rpx solid #4a5af0;
+  color: #4a5af0;
+}
+
+.danger-ghost {
+  border: 1rpx solid rgba(231, 76, 60, 0.5);
+  color: #e74c3c;
+}
+
+.section-head {
+  margin: 28rpx 4rpx 16rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2430;
+}
+
+.section-count {
+  font-size: 24rpx;
+  color: #9ca3af;
+}
+
+.empty {
+  color: #9ca3af;
+  text-align: center;
+  font-size: 28rpx;
+  padding-top: 60rpx;
+  padding-bottom: 60rpx;
+}
+
+.line-card {
+  display: flex;
+  align-items: center;
+}
+
+.line-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.line-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2430;
+}
+
+.line-desc {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #9ca3af;
+}
+
+.line-amount {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1f2430;
 }
 
 .info-row {
   display: flex;
-  padding: 16rpx 0;
-  border-bottom: 2rpx solid #f5f6fa;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #f4f5f8;
 
   &:last-child {
     border-bottom: none;
@@ -180,71 +363,20 @@ onShareAppMessage(() => {
 }
 
 .info-label {
-  width: 160rpx;
+  width: 180rpx;
   font-size: 26rpx;
-  color: #6b7280;
+  color: #8a93a6;
+  flex-shrink: 0;
 }
 
 .info-value {
   flex: 1;
   font-size: 26rpx;
   color: #1f2430;
-}
-
-.card-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  margin-bottom: 16rpx;
-}
-
-.item-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 18rpx 0;
-  border-bottom: 2rpx solid #f5f6fa;
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.item-name {
-  font-size: 28rpx;
-  color: #1f2430;
-}
-
-.item-desc {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #9ca3af;
-}
-
-.item-right {
   text-align: right;
 }
 
-.item-price {
-  font-size: 28rpx;
-  color: #1f2430;
-  font-weight: 600;
-}
-
-.item-qty {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #9ca3af;
-}
-
-.share-btn {
-  margin-top: 12rpx;
-  height: 92rpx;
-  line-height: 92rpx;
-  background: #2b6bff;
-  color: #fff;
-  font-size: 32rpx;
-  font-weight: 600;
-  border-radius: 16rpx;
+.note-text {
+  color: #4b5563;
 }
 </style>
