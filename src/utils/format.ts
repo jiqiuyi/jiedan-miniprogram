@@ -32,6 +32,15 @@ export function formatAmount(cents: number | string | null | undefined): string 
   return parts.join('.')
 }
 
+/** 金额：元 → 元字符串（保留两位小数，带千分位）。用于服务端以「元」为单位的金额（如返现 rebate/rebatePaid） */
+export function formatYuan(v: number | string | null | undefined): string {
+  const val = Number(v ?? 0)
+  if (isNaN(val)) return '0.00'
+  const parts = val.toFixed(2).split('.')
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return parts.join('.')
+}
+
 /** 项目状态 → 中文（与 App ProjectStatus 对齐：0=接单 1=制作中 2=待收尾款 3=完结） */
 export function projectStatusText(status: number | string | null | undefined): string {
   const map: Record<number, string> = { 0: '接单', 1: '制作中', 2: '待收尾款', 3: '完结' }
