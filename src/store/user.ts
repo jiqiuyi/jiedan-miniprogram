@@ -35,12 +35,17 @@ export const useUserStore = defineStore('user', () => {
     return true
   }
 
-  /** 微信手机号登录 */
-  async function login(phone: string, code?: string, nickname?: string): Promise<boolean> {
+  /** 微信手机号登录（inviteCode 仅首次注册时绑定一级邀请人，绑后不可改） */
+  async function login(
+    phone: string,
+    code?: string,
+    nickname?: string,
+    inviteCode?: string
+  ): Promise<boolean> {
     if (loggingIn.value) return false
     loggingIn.value = true
     try {
-      const res = await wechatLogin(phone, code, nickname)
+      const res = await wechatLogin(phone, code, nickname, inviteCode)
       if (res.ok && res.data) {
         token.value = res.data.token
         userInfo.value = res.data.user

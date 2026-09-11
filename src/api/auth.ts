@@ -18,15 +18,16 @@ export interface LoginResult {
   user: LoginUser
 }
 
-/** 微信手机号登录（登录即注册；同手机号 = 同 uid） */
+/** 微信手机号登录（登录即注册；同手机号 = 同 uid）；inviteCode 仅首次注册时绑定一级邀请人 */
 export function wechatLogin(
   phone: string,
   code?: string,
-  nickname?: string
+  nickname?: string,
+  inviteCode?: string
 ): Promise<{ ok: boolean; data?: LoginResult; error?: string; statusCode: number }> {
   return post<LoginResult>(
     '/api/wechat/login',
-    { phone, code: code || '', nickname: nickname || '' },
+    { phone, code: code || '', nickname: nickname || '', inviteCode: inviteCode || '' },
     { auth: false, silent: true }
   )
 }

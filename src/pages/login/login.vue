@@ -7,7 +7,7 @@
       </view>
 
       <view class="form-card">
-      <view class="field">
+      <view class="field no-mb">
         <text class="label">手机号</text>
         <input
           class="input"
@@ -18,6 +18,19 @@
           placeholder-class="ph"
         />
       </view>
+
+      <view class="field">
+        <text class="label">邀请码</text>
+        <input
+          class="input"
+          type="text"
+          :maxlength="20"
+          v-model="inviteCode"
+          placeholder="选填，好友邀请码"
+          placeholder-class="ph"
+        />
+      </view>
+      <text v-if="inviteCode" class="invite-tip">检测到邀请码 {{ inviteCode }}，首次注册将自动绑定邀请人（绑定后不可修改）</text>
 
       <view
         class="btn-primary"
@@ -41,17 +54,35 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
+import {
+  captureInviteFromOptions,
+  getPendingInviteCode,
+  clearPendingInviteCode,
+  parseInviteCode
+} from '@/utils/invite-code'
 
 const store = useUserStore()
 const phone = ref('')
+const inviteCode = ref('')
 
 const canSubmit = computed(() => /^1\d{10}$/.test(phone.value))
 
+// 模块 A：从落地页 / 分享链接（options.ic）或本机暂存中预填邀请码，手填可覆盖
+onLoad((options) => {
+  captureInviteFromOptions(options as unknown as Record<string, unknown>)
+  const saved = getPendingInviteCode()
+  if (saved) inviteCode.value = saved
+})
+
 async function onLogin() {
   if (!canSubmit.value) return
-  const r = await store.login(phone.value, '', '小程序用户')
+  // 邀请码仅首次注册时由服务端绑定，自邀 / 重复绑定由服务端拦截
+  const code = parseInviteCode(inviteCode.value) || inviteCode.value.trim().toUpperCase()
+  const r = await store.login(phone.value, '', '小程序用户', code)
   if (r) {
+    if (code) clearPendingInviteCode()
     uni.showToast({ title: '登录成功', icon: 'success' })
     setTimeout(() => {
       uni.switchTab({ url: '/pages/index/index' })
@@ -109,6 +140,18 @@ async function onLogin() {
   border-bottom: 2rpx solid #eef0f4;
   padding-bottom: 24rpx;
   margin-bottom: 48rpx;
+}
+
+.field.no-mb {
+  margin-bottom: 24rpx;
+}
+
+.invite-tip {
+  display: block;
+  margin: -24rpx 0 32rpx;
+  font-size: 22rpx;
+  color: #2e9e5b;
+  line-height: 1.6;
 }
 
 .label {
