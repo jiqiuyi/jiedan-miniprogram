@@ -58,7 +58,13 @@
     {
       "path": "pages/customer/form",
       "style": {
-        "navigationBarTitleText": "客户编辑"
+        "navigationBarTitleText": "客户资料"
+      }
+    },
+    {
+      "path": "pages/customer/tags",
+      "style": {
+        "navigationBarTitleText": "标签池"
       }
     },
     {
@@ -82,7 +88,7 @@
     {
       "path": "pages/income/reconciliation",
       "style": {
-        "navigationBarTitleText": "对账"
+        "navigationBarTitleText": "对账汇总"
       }
     },
     {
@@ -118,7 +124,8 @@
     {
       "path": "pages/mine/mine",
       "style": {
-        "navigationBarTitleText": "我的"
+        "navigationBarTitleText": "我的",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -149,34 +156,44 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "接单管家",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "backgroundColor": "#F5F6FA"
+    "navigationBarBackgroundColor": "#F6F7FB",
+    "backgroundColor": "#F6F7FB"
   },
   "tabBar": {
     "color": "#8A8F99",
-    "selectedColor": "#2B6BFF",
-    "backgroundColor": "#FFFFFF",
+    "selectedColor": "#4A5AF0",
+    "backgroundColor": "#EFEDF4",
     "borderStyle": "black",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "看板"
+        "text": "看板",
+        "iconPath": "static/tabbar/dashboard.png",
+        "selectedIconPath": "static/tabbar/dashboard_active.png"
       },
       {
         "pagePath": "pages/project/list",
-        "text": "项目"
+        "text": "项目",
+        "iconPath": "static/tabbar/project.png",
+        "selectedIconPath": "static/tabbar/project_active.png"
       },
       {
         "pagePath": "pages/customer/list",
-        "text": "客户"
+        "text": "客户",
+        "iconPath": "static/tabbar/customer.png",
+        "selectedIconPath": "static/tabbar/customer_active.png"
       },
       {
         "pagePath": "pages/quote/list",
-        "text": "报价"
+        "text": "报价",
+        "iconPath": "static/tabbar/quote.png",
+        "selectedIconPath": "static/tabbar/quote_active.png"
       },
       {
         "pagePath": "pages/mine/mine",
-        "text": "我的"
+        "text": "我的",
+        "iconPath": "static/tabbar/mine.png",
+        "selectedIconPath": "static/tabbar/mine_active.png"
       }
     ]
   }

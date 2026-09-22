@@ -1,19 +1,55 @@
-/* 全局 SCSS 变量（uni-app 自动注入） */
-$color-primary: #2b6bff;
-$color-primary-light: #5b8dff;
-$color-success: #21b263;
-$color-warning: #ff9500;
-$color-danger: #f44a4a;
+/* ============================================================
+ * 全局 SCSS 变量（uni-app 自动注入）
+ * 对齐基准：D:\dev\jiedan_app\lib\theme.dart
+ *   AppTheme（颜色）/ AppRadius（圆角）/ AppFont（字号）/ AppSpace（间距）
+ * 换算规则：App 以 375pt 逻辑宽为基准，小程序 750rpx = 屏幕宽，故 1pt = 2rpx
+ * ============================================================ */
 
-$text-main: #1f2430;
-$text-sub: #6b7280;
-$text-light: #9ca3af;
+/* ---------------- 品牌与状态色（AppTheme） ---------------- */
+$color-primary: #4a5af0; // 品牌蓝 primary
+$color-primary-dark: #3a46c4; // primaryDark
+$color-primary-light: #7783f4; // primary 25% 白混色（浅底/渐变用）
+$color-accent: #16a085; // 收入绿 accent
+$color-success: #27ae60; // success 同步成功/健康态
+$color-warning: #e67e22; // warn 待收/提醒橙
+$color-danger: #e74c3c; // danger
 
-$bg-page: #f5f6fa;
-$bg-card: #ffffff;
+/* ---------------- 文字色（AppTheme.textMain / textSub） ---------------- */
+$text-main: #1b2233;
+$text-sub: #8a93a6;
+$text-light: #a7aebc; // textSub 浅化，用于占位/禁用文字
 
-$radius-sm: 12rpx;
-$radius-md: 16rpx;
-$radius-lg: 24rpx;
+/* ---------------- 背景 / 描边 / 分割线 ---------------- */
+$bg-page: #f6f7fb; // 页面底 bg
+$bg-card: #ffffff; // 卡片底 card
+$bg-card-inner: #eff2f8; // 内嵌灰卡 bgCard
+$divider: #e3e7f0; // 分割线 divider
+$border-input: #e4e7ef; // 输入框描边
+$border-card: #eceef4; // 卡片描边
+$border-outline: #d7dce8; // 次级按钮描边
 
-$shadow-card: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
+/* ---------------- 圆角（AppRadius，pt → rpx ×2） ---------------- */
+$radius-xxs: 8rpx; // 4  进度条 / 细状态条
+$radius-xs: 16rpx; // 8  状态徽章 / 小标签 / 日历格
+$radius-sm: 20rpx; // 10 输入框 / 内嵌面板 / 缩略图
+$radius-md: 24rpx; // 12 按钮 / 列表项 / 分段控件
+$radius-lg: 28rpx; // 14 卡片容器
+$radius-sheet: 40rpx; // 20 底部弹层 / 胶囊标签
+
+/* ---------------- 字号（AppFont，pt → rpx ×2） ---------------- */
+$font-caption: 22rpx; // 11 辅助说明
+$font-tag: 24rpx; // 12 标签 / 次要信息
+$font-body: 26rpx; // 13 正文次要
+$font-body-lg: 28rpx; // 14 正文
+$font-title: 32rpx; // 16 卡片标题 / 弹层标题
+$font-appbar: 34rpx; // 17 页面标题
+
+/* ---------------- 间距（AppSpace，pt → rpx ×2） ---------------- */
+$space-xs: 8rpx; // 4
+$space-sm: 16rpx; // 8
+$space-md: 24rpx; // 12
+$space-lg: 32rpx; // 16
+$space-xl: 48rpx; // 24
+
+/* ---------------- 阴影 ---------------- */
+$shadow-card: 0 4rpx 16rpx rgba(27, 34, 51, 0.05);
