@@ -1,37 +1,38 @@
 <template>
   <view class="page">
-    <!-- 未登录 -->
-    <view v-if="!user.isLoggedIn" class="card empty-card">
-      <text class="empty-icon">🎁</text>
-      <text class="empty-text">登录后查看我的邀请码与推广进度</text>
-      <view class="primary-btn" @tap="goLogin">去登录</view>
+    <!-- 未登录态（对齐 App _NotLoggedIn：图标 + 标题 + 副标题 + 去登录） -->
+    <view v-if="!user.isLoggedIn" class="not-login">
+      <text class="not-login-icon">🎁</text>
+      <text class="not-login-title">登录后参与推广活动</text>
+      <text class="not-login-sub">推荐好友得 VIP，返现 50%</text>
+      <view class="primary-pill" hover-class="action-hover" @tap="goLogin">去登录</view>
     </view>
 
-    <view v-else-if="loading" class="card empty-card">
-      <text class="empty-text">加载中…</text>
+    <view v-else-if="loading" class="card center-card">
+      <text class="center-text">加载中…</text>
     </view>
 
-    <view v-else-if="!me" class="card empty-card">
-      <text class="empty-text">加载失败，请检查网络后重试</text>
-      <view class="primary-btn" @tap="reload">重新加载</view>
+    <view v-else-if="!me" class="card center-card">
+      <text class="center-text">加载失败，请检查网络后重试</text>
+      <view class="primary-pill" hover-class="action-hover" @tap="reload">重新加载</view>
     </view>
 
     <template v-else>
-      <!-- 我的邀请码卡片 -->
-      <view class="invite-code-card">
+      <!-- 我的邀请码（对齐 App 邀请码卡：白底 / 主色大字 / 复制按钮 / 说明） -->
+      <view class="card code-card">
         <text class="code-label">我的邀请码</text>
         <view class="code-row">
-          <text class="code-value">{{ me.inviteCode }}</text>
-          <view class="copy-btn" hover-class="action-hover" @tap="copyCode">复制</view>
+          <text class="code-value">{{ inviteCode }}</text>
+          <view class="code-copy" hover-class="action-hover" @tap="copyCode">复制</view>
         </view>
         <text class="code-tip">把邀请码发给朋友，朋友注册时填入即可自动完成邀请，无需手动登记。</text>
       </view>
 
-      <!-- 进度卡片 -->
-      <view class="card stat-card">
+      <!-- 统计卡（对齐 App _Stat：已推荐 / 已付款 / 累计返现 + 已打款 / 待打款 + 进度条） -->
+      <view class="card">
         <view class="stat-row">
           <view class="stat">
-            <text class="stat-num">{{ me.invitees.length }}</text>
+            <text class="stat-num">{{ invitedCount }}</text>
             <text class="stat-label">已推荐（人）</text>
           </view>
           <view class="stat">
@@ -43,48 +44,50 @@
             <text class="stat-label">累计返现（元）</text>
           </view>
         </view>
-        <view class="progress-head">
-          <text class="progress-text">推荐 {{ me.invitees.length }}/{{ NEED }} 位有效好友，即可免费获得 VIP 1 个月{{ bonusText }}</text>
+        <view class="stat-row second">
+          <view class="stat">
+            <text class="stat-num">{{ formatYuan(rebatePaid) }}</text>
+            <text class="stat-label">已打款（元）</text>
+          </view>
+          <view class="stat">
+            <text class="stat-num">{{ formatYuan(rebatePending) }}</text>
+            <text class="stat-label">待打款（元）</text>
+          </view>
         </view>
+        <text class="progress-text">
+          推荐 {{ invitedCount }}/{{ NEED }} 位有效好友，即可免费获得 VIP {{ REWARD_MONTHS }} 个月{{ bonusText }}
+        </text>
         <view class="progress-track">
           <view class="progress-bar" :style="{ width: progressPct + '%' }"></view>
         </view>
       </view>
 
-      <!-- 返现提现（服务端返现：与钱包余额 / 本地提现严格分开，不得混用） -->
+      <!-- 专属邀请链接（对齐 App 邀请链接卡：标题 + 链接 + 复制链接 / 分享给好友） -->
+      <view class="card link-card">
+        <text class="link-title">专属邀请链接</text>
+        <text class="link-value">{{ inviteLink }}</text>
+        <view class="link-actions">
+          <view class="link-btn ghost" hover-class="action-hover" @tap="copyLink">复制链接</view>
+          <button class="link-btn primary" open-type="share" hover-class="btn-hover">分享给好友</button>
+        </view>
+      </view>
+
+      <!-- 返现收款账户 & 申请打款（模块 B，对齐 App 返现卡结构） -->
       <view class="card payout-card">
         <view class="payout-head">
-          <text class="payout-title">返现提现</text>
-          <text class="payout-sub">返现按订单申请，绑定收款账户后提交，后台转账后标记已打款</text>
-        </view>
-
-        <view class="payout-stats">
-          <view class="payout-stat">
-            <text class="payout-num done">¥{{ formatYuan(rebatePaid) }}</text>
-            <text class="payout-label">已打款</text>
-          </view>
-          <view class="payout-stat">
-            <text class="payout-num pending">¥{{ formatYuan(rebatePending) }}</text>
-            <text class="payout-label">待打款</text>
-          </view>
-          <view class="payout-stat">
-            <text class="payout-num">¥{{ formatYuan(rebateTotal) }}</text>
-            <text class="payout-label">累计返现</text>
+          <text class="payout-title">返现收款账户</text>
+          <view class="payout-edit" hover-class="action-hover" @tap="openAccountForm">
+            {{ payoutEmpty ? '去设置' : '修改' }}
           </view>
         </view>
-
-        <view class="account-box" hover-class="action-hover" @tap="openAccountForm">
-          <view class="account-main">
-            <text class="account-title">我的收款账户</text>
-            <text class="account-sub">{{ accountSummary }}</text>
-          </view>
-          <text class="account-action">{{ hasAccount ? '修改' : '去设置' }}</text>
-        </view>
-
-        <view v-if="applyAtText" class="applied-tip">
-          <text>已申请、等待打款 · {{ applyAtText }}</text>
-        </view>
-
+        <text class="payout-summary">{{ accountSummary }}</text>
+        <text class="payout-status">
+          {{
+            applyAtText
+              ? `已申请，等待打款（${applyAtText}）`
+              : `待打款 ¥${formatYuan(rebatePending)}，可随时申请`
+          }}
+        </text>
         <view
           class="apply-btn"
           :class="canApply ? 'apply-active' : 'apply-disabled'"
@@ -93,52 +96,44 @@
         >
           <text>{{ applying ? '提交中…' : '申请打款' }}</text>
         </view>
-        <text class="apply-tip">
-          待打款为 0 时无需申请；提交后该笔返现金额冻结，打款完成自动更新为「已打款」。
-        </text>
       </view>
 
-      <!-- 好友列表 -->
-      <view class="section-head">
-        <text class="section-title">邀请的好友</text>
-      </view>
-      <view v-if="!me.invitees.length" class="card empty-card small">
-        <text class="empty-text">还没有好友通过你的邀请码注册\n把邀请码发给朋友，注册后自动出现在这里</text>
+      <!-- 好友列表（对齐 App _InviteeTile：头像首字 + 名称 + 副标题 + 状态徽标） -->
+      <view v-if="!invitedCount" class="card empty-card">
+        <text class="empty-icon">👥</text>
+        <text class="empty-text">还没有好友通过你的邀请码注册</text>
+        <text class="empty-text">把邀请码发给朋友，注册后自动出现在这里</text>
       </view>
       <view v-else class="row-list">
-        <view v-for="e in me.invitees" :key="String(e.id)" class="row-card">
+        <view v-for="e in invitees" :key="String(e.id)" class="row-card">
           <view class="avatar">{{ avatarOf(e) }}</view>
           <view class="row-main">
             <text class="row-title">{{ nameOf(e) }}</text>
-            <text class="row-sub">{{ maskPhone(e.phone) }} · {{ dateText(e.paidAt || 0) }}</text>
+            <text class="row-sub">{{ tileSub(e) }}</text>
           </view>
-          <view v-if="e.paid" class="paid-tag">
-            <text class="paid-main">已付款 ¥{{ formatYuan(e.payAmount) }}</text>
-            <text class="paid-sub">返现 ¥{{ formatYuan(rebateOf(e)) }}</text>
-            <text class="paid-state" :class="e.payoutAt ? 'state-done' : 'state-wait'">
-              {{ e.payoutAt ? '已打款' : '待打款' }}
-            </text>
+          <view class="badge" :class="badgeOf(e).cls">
+            <text class="badge-text">{{ badgeOf(e).text }}</text>
           </view>
-          <text v-else class="wait-text">待付款</text>
         </view>
       </view>
 
-      <view class="rules card">
+      <!-- 活动规则（对齐 App 规则说明） -->
+      <view class="card rules">
         <text class="rules-title">活动规则</text>
+        <text class="rules-text">1. 好友注册时填写你的邀请码，系统自动绑定邀请关系；</text>
+        <text class="rules-text">2. 好友付款开通专业版后自动返现其付款金额的 50%；</text>
         <text class="rules-text">
-          1. 好友注册时填写你的邀请码，系统自动绑定邀请关系；
-          2. 好友付款开通专业版后，你获得其付款金额 50% 的返现；
-          3. 每 2 位有效好友可免费获赠 VIP 1 个月（进度见上方）；
-          4. 返现与 VIP 赠送由服务器统一记录，换机 / 重装后依然保留。
+          3. 每 {{ NEED }} 位有效好友自动免费赠送 VIP {{ REWARD_MONTHS }} 个月；
         </text>
+        <text class="rules-text">4. 返现与 VIP 赠送由服务器统一记录，换机 / 重装后依然保留。</text>
       </view>
     </template>
 
-    <!-- 收款账户设置弹层（仅服务端返现使用，与本地钱包提现账户无关） -->
+    <!-- 收款账户设置弹层（仅服务端返现使用，与本地钱包提现账户互不影响） -->
     <view v-if="showForm" class="mask" @tap="closeForm">
       <view class="sheet" @tap.stop>
         <text class="sheet-title">返现收款账户</text>
-        <text class="sheet-tip">返现打款将转入该账户。此处仅用于服务端返现，与「钱包余额提现」互不影响。</text>
+        <text class="sheet-tip">用于接收邀请返现打款，仅在申请打款时使用；与钱包余额提现相互独立。</text>
 
         <view class="method-row">
           <view
@@ -158,12 +153,12 @@
         </view>
 
         <view class="form-field">
-          <text class="form-label">收款人</text>
+          <text class="form-label">收款人姓名</text>
           <input
             class="form-input"
             :maxlength="20"
             v-model="form.name"
-            placeholder="真实姓名"
+            placeholder="用于打款核对，如「张三」"
             placeholder-class="ph"
           />
         </view>
@@ -173,30 +168,50 @@
             class="form-input"
             :maxlength="40"
             v-model="form.account"
-            placeholder="微信 / 支付宝账号"
+            placeholder="微信号 / 支付宝账号"
             placeholder-class="ph"
           />
         </view>
 
         <view class="qr-row">
-          <view class="qr-item" @tap="pickQr('wechat')">
-            <image v-if="form.wechatQrcode" class="qr-img" :src="form.wechatQrcode" mode="aspectFit" />
-            <view v-else class="qr-empty">
-              <text class="qr-plus">＋</text>
-              <text class="qr-text">选择微信收款码</text>
+          <view class="qr-item">
+            <view class="qr-thumb">
+              <image
+                v-if="form.wechatQrcode"
+                class="qr-img"
+                :src="form.wechatQrcode"
+                mode="aspectFill"
+              />
+              <text v-else class="qr-mark">{{ payoutHasWechat ? '✓' : '＋' }}</text>
             </view>
-            <text class="qr-label">{{ form.wechatQrcode ? '微信收款码（点击更换）' : '微信收款码' }}</text>
+            <view class="qr-main">
+              <text class="qr-label">微信收款码</text>
+              <text class="qr-state">{{ qrStateText('wechat') }}</text>
+            </view>
+            <view class="qr-btn" hover-class="action-hover" @tap="pickQr('wechat')">
+              {{ hasNewQr('wechat') || payoutHasWechat ? '更换' : '选择图片' }}
+            </view>
           </view>
-          <view class="qr-item" @tap="pickQr('alipay')">
-            <image v-if="form.alipayQrcode" class="qr-img" :src="form.alipayQrcode" mode="aspectFit" />
-            <view v-else class="qr-empty">
-              <text class="qr-plus">＋</text>
-              <text class="qr-text">选择支付宝收款码</text>
+          <view class="qr-item">
+            <view class="qr-thumb">
+              <image
+                v-if="form.alipayQrcode"
+                class="qr-img"
+                :src="form.alipayQrcode"
+                mode="aspectFill"
+              />
+              <text v-else class="qr-mark">{{ payoutHasAlipay ? '✓' : '＋' }}</text>
             </view>
-            <text class="qr-label">{{ form.alipayQrcode ? '支付宝收款码（点击更换）' : '支付宝收款码' }}</text>
+            <view class="qr-main">
+              <text class="qr-label">支付宝收款码</text>
+              <text class="qr-state">{{ qrStateText('alipay') }}</text>
+            </view>
+            <view class="qr-btn" hover-class="action-hover" @tap="pickQr('alipay')">
+              {{ hasNewQr('alipay') || payoutHasAlipay ? '更换' : '选择图片' }}
+            </view>
           </view>
         </view>
-        <text class="qr-hint">收款码单张压缩后不超过 200KB；不更换时保留已上传的图片。</text>
+        <text class="qr-hint">选填，建议上传以便后台扫码转账；单张压缩后不超过 200KB。</text>
 
         <view class="sheet-btns">
           <view class="sheet-btn ghost" hover-class="action-hover" @tap="closeForm">取消</view>
@@ -206,7 +221,7 @@
             hover-class="action-hover"
             @tap="saveAccount"
           >
-            {{ saving ? '保存中…' : '保存' }}
+            {{ saving ? '保存中…' : '保存收款账户' }}
           </view>
         </view>
       </view>
@@ -216,13 +231,16 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShareAppMessage, onShareTimeline, onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
-import { formatYuan, maskPhone } from '@/utils/format'
+import { formatDateTime, formatYuan } from '@/utils/format'
 import { applyPayout, savePayoutAccount, type MeInvitee } from '@/api/user'
 import { pickQrcodeDataUrl } from '@/utils/qrcode-image'
 
-const NEED = 2 // 满 2 位有效好友赠 1 个月 VIP
+/** 推荐好友数达到该值 → 送 VIP（对齐 AppConfig.inviteFreeVipFriends） */
+const NEED = 2
+/** 达成推荐目标赠送的 VIP 月数（对齐 AppConfig.inviteRewardMonths） */
+const REWARD_MONTHS = 1
 
 const user = useUserStore()
 const loading = ref(false)
@@ -240,62 +258,63 @@ const form = reactive({
 })
 
 const me = computed(() => user.me)
+const invitees = computed<MeInvitee[]>(() => me.value?.invitees ?? [])
+const invitedCount = computed(() => invitees.value.length)
+const paidCount = computed(() => invitees.value.filter((e) => e.paid).length)
 
-const paidCount = computed(() => {
-  return me.value ? me.value.invitees.filter((e) => e.paid).length : 0
+const inviteCode = computed(() => (me.value?.inviteCode || '').trim())
+/** 专属邀请链接：优先取服务端 inviteLink，缺省时按邀请码拼接（对齐 App _load 兜底） */
+const inviteLink = computed(() => {
+  const raw = (me.value?.inviteLink || '').trim()
+  if (raw) return raw
+  return inviteCode.value ? `https://yurouyun.cn/?ic=${inviteCode.value}` : ''
 })
 
 const rebateTotal = computed(() => Number(me.value?.rebateTotal || 0))
 const rebatePaid = computed(() => Number(me.value?.rebatePaid || 0))
 const rebatePending = computed(() => Number(me.value?.rebatePending || 0))
-const applyAtText = computed(() => (me.value?.payoutApplyAt ? dateTimeText(me.value.payoutApplyAt) : ''))
+const applyAtText = computed(() => {
+  const ts = Number(me.value?.payoutApplyAt || 0)
+  return ts ? formatDateTime(ts) : ''
+})
+const bonusText = computed(() => (me.value?.vipRewardGranted ? '（已领取）' : ''))
 
-const hasAccount = computed(() => {
-  const p = me.value?.payout
-  return !!(p && p.method && p.name && p.account)
+const payout = computed(() => me.value?.payout)
+/** 收款账户是否为空（对齐 App payoutInfo().isEmpty：字段与收款码标记全空视为未设置） */
+const payoutEmpty = computed(() => {
+  const p = payout.value
+  if (!p) return true
+  return (
+    !String(p.method || '') &&
+    !String(p.name || '') &&
+    !String(p.account || '') &&
+    p.hasWechatQrcode !== true &&
+    p.hasAlipayQrcode !== true
+  )
 })
 
+/** 服务端是否已保存对应收款码（服务端不回传图片本体，仅返回已设置标记） */
+const payoutHasWechat = computed(() => payout.value?.hasWechatQrcode === true)
+const payoutHasAlipay = computed(() => payout.value?.hasAlipayQrcode === true)
+
 const accountSummary = computed(() => {
-  const p = me.value?.payout
-  if (!p || !p.method) return '未设置（申请打款前请先绑定）'
-  const way = p.method === 'alipay' ? '支付宝' : '微信'
-  const qrs = [p.hasWechatQrcode ? '微信码' : '', p.hasAlipayQrcode ? '支付宝码' : '']
-    .filter(Boolean)
-    .join('、')
-  return `${way} · ${p.name || ''} · ${maskAccount(p.account || '')}${qrs ? ' · 已传 ' + qrs : ' · 未传收款码'}`
+  const p = payout.value
+  const method = String(p?.method || '')
+  const name = String(p?.name || '')
+  const account = String(p?.account || '')
+  const wx = p?.hasWechatQrcode === true
+  const ali = p?.hasAlipayQrcode === true
+  if (!method && !name && !account && !wx && !ali) {
+    return '尚未设置，设置后才能申请打款'
+  }
+  const label = method === 'alipay' ? '支付宝' : method === 'wechat' ? '微信' : '未选方式'
+  const masked = account.length <= 4 ? account : `${account.slice(0, 2)}****${account.slice(-2)}`
+  const codes = [wx ? '已传微信码' : '', ali ? '已传支付宝码' : ''].filter(Boolean).join('、')
+  return `${label} · ${name || '未填姓名'} · ${masked || '未填账号'}${codes ? ` · ${codes}` : ' · 未传收款码'}`
 })
 
 const canApply = computed(() => rebatePending.value > 0 && !applying.value)
-
-const bonusText = computed(() => {
-  if (me.value && me.value.vipRewardGranted) return '（已领取）'
-  return ''
-})
-
-const progressPct = computed(() => {
-  const n = me.value ? me.value.invitees.length : 0
-  return Math.min(100, Math.round((n / NEED) * 100))
-})
-
-function maskAccount(a: string): string {
-  const s = (a || '').trim()
-  if (!s) return ''
-  if (s.length <= 4) return '****'
-  return `${s.slice(0, 2)}****${s.slice(-2)}`
-}
-
-function dateText(ts: number): string {
-  if (!ts) return '刚刚注册'
-  const d = new Date(ts)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function dateTimeText(ts: number): string {
-  if (!ts) return ''
-  const d = new Date(ts)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+const progressPct = computed(() => Math.min(100, Math.round((invitedCount.value / NEED) * 100)))
 
 function nameOf(e: MeInvitee): string {
   return (e.nickname || '').trim() || `好友${e.id}`
@@ -310,6 +329,19 @@ function rebateOf(e: MeInvitee): number {
   const server = Number(e.rebate)
   if (!isNaN(server) && server > 0) return server
   return Math.round((Number(e.payAmount) || 0) * 0.5 * 100) / 100
+}
+
+function tileSub(e: MeInvitee): string {
+  if (e.paid) {
+    return `已付款 ¥${formatYuan(e.payAmount)} · 返现 ¥${formatYuan(rebateOf(e))}`
+  }
+  const phone = (e.phone || '').trim()
+  return phone || '已注册 · 待付款'
+}
+
+function badgeOf(e: MeInvitee): { text: string; cls: string } {
+  if (!e.paid) return { text: '待付款', cls: 'badge-muted' }
+  return e.payoutAt ? { text: '已打款', cls: 'badge-accent' } : { text: '待打款', cls: 'badge-primary' }
 }
 
 function goLogin() {
@@ -330,17 +362,44 @@ onShow(() => {
 })
 
 function copyCode() {
-  if (!me.value) return
+  if (!inviteCode.value) return
   uni.setClipboardData({
-    data: me.value.inviteCode,
+    data: inviteCode.value,
     success: () => {
       uni.showToast({ title: '邀请码已复制', icon: 'none' })
     }
   })
 }
 
+function copyLink() {
+  if (!inviteLink.value) return
+  uni.setClipboardData({
+    data: inviteLink.value,
+    success: () => {
+      uni.showToast({ title: '专属邀请链接已复制', icon: 'none' })
+    }
+  })
+}
+
+/** 分享文案与 App _share 一致；小程序分享卡片以 path 携带邀请码，落地自动预填 */
+function shareTitle(): string {
+  return inviteCode.value
+    ? `我在用「接单管家」管报价、客户和项目，注册时填邀请码 ${inviteCode.value} 即可`
+    : '我在用「接单管家」管报价、客户和项目'
+}
+
+onShareAppMessage(() => ({
+  title: shareTitle(),
+  path: inviteCode.value ? `/pages/login/login?ic=${inviteCode.value}` : '/pages/login/login'
+}))
+
+onShareTimeline(() => ({
+  title: shareTitle(),
+  query: inviteCode.value ? `ic=${inviteCode.value}` : ''
+}))
+
 function openAccountForm() {
-  const p = me.value?.payout
+  const p = payout.value
   form.method = p?.method === 'alipay' ? 'alipay' : 'wechat'
   form.name = p?.name || ''
   form.account = p?.account || ''
@@ -351,6 +410,18 @@ function openAccountForm() {
 
 function closeForm() {
   showForm.value = false
+}
+
+/** 本次是否已选了新收款码（对齐 App「已选择新图片，保存后生效」） */
+function hasNewQr(kind: 'wechat' | 'alipay'): boolean {
+  return kind === 'wechat' ? !!form.wechatQrcode : !!form.alipayQrcode
+}
+
+/** 收款码行状态文案（对齐 App _QrRow：已选择新图片 / 已设置 / 未设置） */
+function qrStateText(kind: 'wechat' | 'alipay'): string {
+  if (hasNewQr(kind)) return '已选择新图片，保存后生效'
+  const has = kind === 'wechat' ? payoutHasWechat.value : payoutHasAlipay.value
+  return has ? '已设置' : '未设置'
 }
 
 /** 选择并压缩收款码（≤200KB 的 base64），保存时才上传 */
@@ -376,8 +447,16 @@ async function saveAccount() {
     uni.showToast({ title: '请填写收款人姓名', icon: 'none' })
     return
   }
+  if (name.length > 20) {
+    uni.showToast({ title: '姓名不能超过 20 个字', icon: 'none' })
+    return
+  }
   if (!account) {
     uni.showToast({ title: '请填写收款账号', icon: 'none' })
+    return
+  }
+  if (account.length > 40) {
+    uni.showToast({ title: '收款账号不能超过 40 个字符', icon: 'none' })
     return
   }
   saving.value = true
@@ -400,16 +479,7 @@ async function saveAccount() {
 
 /** 申请打款：按订单冻结待打款返现、附账户快照，重复申请幂等 */
 async function onApply() {
-  if (applying.value) return
-  if (rebatePending.value <= 0) {
-    uni.showToast({ title: '当前没有可申请的返现', icon: 'none' })
-    return
-  }
-  if (!hasAccount.value) {
-    uni.showToast({ title: '请先设置收款账户', icon: 'none' })
-    openAccountForm()
-    return
-  }
+  if (!canApply.value) return
   applying.value = true
   const res = await applyPayout()
   applying.value = false
@@ -420,7 +490,10 @@ async function onApply() {
   const count = Number(res.data?.applyCount || 0)
   const amount = Number(res.data?.applyAmount || 0)
   uni.showToast({
-    title: count > 0 ? `已提交 ${count} 笔 ¥${formatYuan(amount)}` : '没有新增可申请返现',
+    title:
+      count > 0
+        ? `已提交 ${count} 笔、合计 ¥${formatYuan(amount)}，打款后会更新状态`
+        : '当前没有可申请的返现',
     icon: 'none'
   })
   await reload()
@@ -429,25 +502,84 @@ async function onApply() {
 
 <style lang="scss" scoped>
 .page {
+  min-height: 100vh;
   padding: 24rpx;
   padding-bottom: 60rpx;
   background: #f6f7fb;
-  min-height: 100vh;
   box-sizing: border-box;
 }
 
 .card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 24rpx;
+  margin-top: 16rpx;
+  padding: 32rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
-.invite-code-card {
-  border-radius: 24rpx;
-  padding: 40rpx 32rpx;
-  background: linear-gradient(135deg, #ff9f43 0%, #ff7a5c 100%);
-  color: #fff;
+.card:first-child {
+  margin-top: 0;
+}
+
+.action-hover {
+  opacity: 0.8;
+}
+
+.btn-hover {
+  opacity: 0.88;
+}
+
+/* ===== 未登录 / 加载 / 失败 ===== */
+.not-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+}
+
+.not-login-icon {
+  font-size: 120rpx;
+  line-height: 1;
+}
+
+.not-login-title {
+  margin-top: 32rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1f2430;
+}
+
+.not-login-sub {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #8a93a6;
+}
+
+.primary-pill {
+  margin-top: 40rpx;
+  padding: 20rpx 72rpx;
+  border-radius: 44rpx;
+  background: #4a5af0;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.center-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 32rpx;
+}
+
+.center-text {
+  font-size: 26rpx;
+  color: #8a93a6;
+}
+
+/* ===== 我的邀请码卡 ===== */
+.code-card {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -455,146 +587,228 @@ async function onApply() {
 
 .code-label {
   font-size: 26rpx;
-  opacity: 0.92;
+  color: #8a93a6;
 }
 
 .code-row {
-  margin-top: 16rpx;
+  margin-top: 20rpx;
   display: flex;
   align-items: center;
-  gap: 18rpx;
 }
 
 .code-value {
-  font-size: 60rpx;
+  font-size: 64rpx;
   font-weight: 800;
   letter-spacing: 6rpx;
+  color: #4a5af0;
 }
 
-.copy-btn {
-  font-size: 22rpx;
-  color: #ff9f43;
-  background: #fff;
+.code-copy {
+  margin-left: 24rpx;
   padding: 8rpx 24rpx;
   border-radius: 26rpx;
+  background: rgba(74, 90, 240, 0.08);
+  color: #4a5af0;
+  font-size: 24rpx;
   font-weight: 600;
 }
 
-.action-hover {
-  opacity: 0.85;
-}
-
 .code-tip {
-  margin-top: 22rpx;
-  font-size: 22rpx;
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  line-height: 1.7;
   text-align: center;
-  opacity: 0.9;
-  line-height: 1.6;
+  color: #8a93a6;
 }
 
-.stat-card {
-  margin-top: 20rpx;
-}
-
+/* ===== 统计卡 ===== */
 .stat-row {
   display: flex;
+  align-items: center;
+}
+
+.stat-row.second {
+  margin-top: 28rpx;
 }
 
 .stat {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .stat-num {
-  font-size: 38rpx;
-  font-weight: 700;
+  font-size: 40rpx;
+  font-weight: 800;
   color: #1f2430;
 }
 
 .stat-label {
   margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #9ca3af;
-}
-
-.progress-head {
-  margin-top: 28rpx;
+  font-size: 24rpx;
+  color: #8a93a6;
 }
 
 .progress-text {
-  font-size: 24rpx;
+  display: block;
+  margin-top: 28rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
   color: #4c5566;
 }
 
 .progress-track {
-  margin-top: 14rpx;
-  height: 14rpx;
+  margin-top: 16rpx;
+  height: 16rpx;
   border-radius: 8rpx;
-  background: #f0e6fb;
+  background: rgba(74, 90, 240, 0.12);
   overflow: hidden;
 }
 
 .progress-bar {
   height: 100%;
   border-radius: 8rpx;
-  background: linear-gradient(90deg, #ff9f43, #ff7a5c);
+  background: #16a085;
 }
 
-.section-head {
-  margin: 30rpx 8rpx 14rpx;
-}
-
-.section-title {
+/* ===== 专属邀请链接卡 ===== */
+.link-title {
   font-size: 26rpx;
   font-weight: 600;
   color: #1f2430;
 }
 
+.link-value {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #8a93a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-actions {
+  margin-top: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.link-btn {
+  margin: 0;
+  padding: 12rpx 32rpx;
+  border-radius: 40rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.link-btn::after {
+  border: none;
+}
+
+.link-btn.ghost {
+  background: rgba(74, 90, 240, 0.08);
+  color: #4a5af0;
+}
+
+.link-btn.primary {
+  background: #4a5af0;
+  color: #ffffff;
+}
+
+/* ===== 返现收款账户卡 ===== */
+.payout-head {
+  display: flex;
+  align-items: center;
+}
+
+.payout-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1f2430;
+}
+
+.payout-edit {
+  margin-left: 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #4a5af0;
+}
+
+.payout-summary {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #8a93a6;
+}
+
+.payout-status {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #8a93a6;
+}
+
+.apply-btn {
+  margin-top: 20rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.apply-active {
+  background: #4a5af0;
+}
+
+.apply-disabled {
+  background: #d8dce6;
+}
+
+/* ===== 好友列表 ===== */
 .empty-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 64rpx 24rpx;
-}
-
-.empty-card.small {
-  padding: 44rpx 24rpx;
+  padding: 56rpx 32rpx;
 }
 
 .empty-icon {
   font-size: 72rpx;
+  line-height: 1;
 }
 
 .empty-text {
-  margin-top: 16rpx;
+  margin-top: 12rpx;
   font-size: 26rpx;
-  color: #9ca3af;
+  line-height: 1.6;
   text-align: center;
-  white-space: pre-line;
-}
-
-.primary-btn {
-  margin-top: 26rpx;
-  padding: 16rpx 64rpx;
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
-  color: #fff;
-  border-radius: 44rpx;
-  font-size: 28rpx;
-  font-weight: 600;
+  color: #8a93a6;
 }
 
 .row-list {
   display: flex;
   flex-direction: column;
   gap: 16rpx;
+  margin-top: 16rpx;
 }
 
 .row-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 22rpx 24rpx;
+  padding: 24rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
   display: flex;
   align-items: center;
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
@@ -604,13 +818,13 @@ async function onApply() {
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
-  background: #f2f4fa;
+  background: rgba(74, 90, 240, 0.1);
   color: #4a5af0;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 30rpx;
-  font-weight: 600;
+  font-weight: 700;
   margin-right: 18rpx;
   flex-shrink: 0;
 }
@@ -624,40 +838,57 @@ async function onApply() {
 
 .row-title {
   font-size: 28rpx;
+  font-weight: 600;
   color: #1f2430;
 }
 
 .row-sub {
-  margin-top: 4rpx;
+  margin-top: 6rpx;
   font-size: 22rpx;
   color: #8a93a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.paid-tag {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+.badge {
+  margin-left: 16rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+  flex-shrink: 0;
 }
 
-.paid-main {
-  font-size: 24rpx;
-  color: #2e9e5b;
+.badge-text {
+  font-size: 22rpx;
   font-weight: 600;
 }
 
-.paid-sub {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  color: #ff7a5c;
+.badge-primary {
+  background: rgba(74, 90, 240, 0.12);
 }
 
-.wait-text {
-  font-size: 24rpx;
-  color: #b6bcc9;
+.badge-primary .badge-text {
+  color: #4a5af0;
 }
 
+.badge-accent {
+  background: rgba(22, 160, 133, 0.12);
+}
+
+.badge-accent .badge-text {
+  color: #16a085;
+}
+
+.badge-muted {
+  background: rgba(138, 147, 166, 0.1);
+}
+
+.badge-muted .badge-text {
+  color: #8a93a6;
+}
+
+/* ===== 活动规则 ===== */
 .rules {
-  margin-top: 24rpx;
   display: flex;
   flex-direction: column;
 }
@@ -673,155 +904,6 @@ async function onApply() {
   font-size: 24rpx;
   line-height: 1.9;
   color: #4c5566;
-  white-space: pre-line;
-}
-
-/* ===== 返现提现（服务端返现，与本地钱包提现严格分开） ===== */
-.payout-card {
-  margin-top: 20rpx;
-}
-
-.payout-head {
-  display: flex;
-  flex-direction: column;
-}
-
-.payout-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #1f2430;
-}
-
-.payout-sub {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #8a93a6;
-  line-height: 1.6;
-}
-
-.payout-stats {
-  margin-top: 22rpx;
-  display: flex;
-}
-
-.payout-stat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.payout-num {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #1f2430;
-}
-
-.payout-num.done {
-  color: #2e9e5b;
-}
-
-.payout-num.pending {
-  color: #ff7a5c;
-}
-
-.payout-label {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #9ca3af;
-}
-
-.account-box {
-  margin-top: 22rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  background: #f7f8fc;
-  display: flex;
-  align-items: center;
-}
-
-.account-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.account-title {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #1f2430;
-}
-
-.account-sub {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #8a93a6;
-}
-
-.account-action {
-  margin-left: 12rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #4a5af0;
-}
-
-.applied-tip {
-  margin-top: 18rpx;
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  background: #fff7e8;
-  color: #b06a00;
-  font-size: 22rpx;
-}
-
-.apply-btn {
-  margin-top: 24rpx;
-  height: 84rpx;
-  border-radius: 44rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.apply-active {
-  background: linear-gradient(135deg, #ff9f43 0%, #ff7a5c 100%);
-}
-
-.apply-disabled {
-  background: #d8dce6;
-}
-
-.btn-hover {
-  opacity: 0.88;
-}
-
-.apply-tip {
-  display: block;
-  margin-top: 14rpx;
-  font-size: 21rpx;
-  color: #9ca3af;
-  line-height: 1.6;
-}
-
-.paid-state {
-  margin-top: 6rpx;
-  padding: 2rpx 12rpx;
-  border-radius: 20rpx;
-  font-size: 20rpx;
-}
-
-.state-done {
-  color: #2e9e5b;
-  background: #eaf7ef;
-}
-
-.state-wait {
-  color: #d9822b;
-  background: #fff6e8;
 }
 
 /* ===== 收款账户弹层 ===== */
@@ -844,7 +926,7 @@ async function onApply() {
   box-sizing: border-box;
   padding: 32rpx 28rpx;
   border-radius: 28rpx 28rpx 0 0;
-  background: #fff;
+  background: #ffffff;
 }
 
 .sheet-title {
@@ -878,7 +960,7 @@ async function onApply() {
 }
 
 .method-on {
-  background: #eef0ff;
+  background: rgba(74, 90, 240, 0.08);
   color: #4a5af0;
   font-weight: 600;
 }
@@ -905,55 +987,77 @@ async function onApply() {
   color: #1f2430;
 }
 
+.ph {
+  color: #9ca3af;
+  font-size: 26rpx;
+}
+
 .qr-row {
   margin-top: 24rpx;
   display: flex;
-  gap: 20rpx;
+  flex-direction: column;
+  gap: 16rpx;
 }
 
 .qr-item {
-  flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  padding: 16rpx;
+  border-radius: 16rpx;
+  background: #f7f8fc;
+}
+
+.qr-thumb {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 12rpx;
+  background: rgba(138, 147, 166, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .qr-img {
   width: 100%;
-  height: 220rpx;
-  border-radius: 14rpx;
-  background: #f7f8fc;
+  height: 100%;
 }
 
-.qr-empty {
-  width: 100%;
-  height: 220rpx;
-  border: 2rpx dashed #d8dce6;
-  border-radius: 14rpx;
-  background: #f7f8fc;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.qr-plus {
-  font-size: 46rpx;
-  line-height: 1;
+.qr-mark {
+  font-size: 32rpx;
   color: #b6bcc9;
 }
 
-.qr-text {
-  margin-top: 10rpx;
-  font-size: 20rpx;
-  color: #9ca3af;
+.qr-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 18rpx;
+  display: flex;
+  flex-direction: column;
 }
 
 .qr-label {
-  margin-top: 10rpx;
-  font-size: 21rpx;
-  color: #4c5566;
-  text-align: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2430;
+}
+
+.qr-state {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #8a93a6;
+}
+
+.qr-btn {
+  margin-left: 16rpx;
+  padding: 10rpx 24rpx;
+  border-radius: 30rpx;
+  background: rgba(74, 90, 240, 0.08);
+  color: #4a5af0;
+  font-size: 24rpx;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .qr-hint {
@@ -987,8 +1091,8 @@ async function onApply() {
 }
 
 .sheet-btn.primary {
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
-  color: #fff;
+  background: #4a5af0;
+  color: #ffffff;
 }
 
 .sheet-btn.primary.btn-disabled {

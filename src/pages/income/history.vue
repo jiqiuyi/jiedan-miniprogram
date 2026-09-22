@@ -1,11 +1,11 @@
 <template>
   <view class="page">
-    <!-- 模式切换 -->
-    <view class="mode-bar">
+    <!-- 筛选模式切换（对齐 App RangeFilterBar：左对齐、纯文字、间距一致、不做等宽拉伸） -->
+    <view class="filter-bar">
       <view
         v-for="m in modeList"
         :key="m.key"
-        class="mode-chip"
+        class="filter-chip"
         :class="{ active: mode === m.key }"
         @tap="switchMode(m.key)"
       >
@@ -13,34 +13,29 @@
       </view>
     </view>
 
-    <!-- 时间段导航 -->
+    <!-- 时间切换条 -->
     <view class="nav-row">
       <view class="nav-btn" hover-class="nav-hover" @tap="shift(-1)">‹</view>
-      <view class="nav-label" @tap="openPicker">
+      <view class="nav-label" hover-class="nav-hover" @tap="openPicker">
         <text class="nav-label-text">{{ navLabel }}</text>
-        <text class="nav-caret">▾</text>
       </view>
       <view v-if="!isCurrent" class="today-btn" hover-class="nav-hover" @tap="goCurrent">回到当前</view>
       <view v-else class="today-spacer"></view>
       <view class="nav-btn" hover-class="nav-hover" @tap="shift(1)">›</view>
     </view>
 
-    <!-- 汇总渐变卡 -->
+    <!-- 收入汇总卡 -->
     <view class="summary-card">
-      <view class="summary-top">
-        <text class="summary-title">{{ summaryTitle }}</text>
-        <text class="summary-count">{{ rows.length }} 笔收款</text>
-      </view>
+      <text class="summary-title">{{ summaryTitle }}</text>
       <text class="summary-amount">¥{{ formatAmount(totalAmount) }}</text>
-      <text class="summary-sub">所选时间段内收款合计</text>
+      <text class="summary-count">{{ rows.length }} 笔收款合计</text>
     </view>
 
-    <!-- 明细列表 -->
+    <!-- 收款明细 -->
     <view class="section-head">
       <text class="section-title">收款明细</text>
     </view>
-    <view v-if="!rows.length" class="empty card">
-      <text class="empty-icon">💸</text>
+    <view v-if="!rows.length" class="empty">
       <text class="empty-text">{{ emptyText }}</text>
     </view>
     <view v-else class="row-list">
@@ -51,23 +46,22 @@
         </view>
         <view class="row-main">
           <text class="row-title">{{ r.projectTitle }}</text>
-          <text class="row-sub">{{ r.typeText }}{{ r.note ? ' · ' + r.note : '' }}</text>
+          <text class="row-sub">{{ r.note ? r.typeText + ' · ' + r.note : r.typeText }}</text>
         </view>
         <text class="row-amount">+¥{{ formatAmount(r.amount) }}</text>
-        <text class="chevron">›</text>
       </view>
     </view>
 
     <!-- 区间选择底部弹层 -->
     <view v-if="showPicker" class="sheet-mask" @tap="closePicker">
       <view class="sheet" @tap.stop>
-        <view class="sheet-title">{{ sheetTitle }}</view>
+        <view v-if="sheetTitle" class="sheet-title">{{ sheetTitle }}</view>
 
-        <!-- 月模式：年份步进 + 12 宫格 -->
+        <!-- 月模式：年份步进 + 12 宫格（对齐 App _MonthPickerSheet） -->
         <template v-if="mode === 'month'">
           <view class="year-nav">
             <view class="year-btn" hover-class="nav-hover" @tap="yearNav(-1)">‹</view>
-            <text class="year-text">{{ pickYear }}年</text>
+            <text class="year-text">{{ pickYear }} 年</text>
             <view class="year-btn" hover-class="nav-hover" @tap="yearNav(1)">›</view>
           </view>
           <view class="month-grid">
@@ -75,8 +69,8 @@
               v-for="mo in 12"
               :key="mo"
               class="month-cell"
-              :class="{ active: mo === pickMonth }"
-              @tap="pickMonth = mo"
+              :class="{ active: isMonthSelected(mo), future: isMonthFuture(mo) }"
+              @tap="pickMonthCell(mo)"
             >
               {{ mo }}月
             </view>
@@ -103,7 +97,7 @@
           <view class="picker-row">
             <picker mode="date" :value="weekDateStr" start="2000-01-01" end="2035-12-31" @change="onWeekChange">
               <view class="picker-cell">
-                <text class="picker-label">选择一周内的任意一天</text>
+                <text class="picker-label">所选日期</text>
                 <text class="picker-value">{{ weekDateStr }}</text>
               </view>
             </picker>
@@ -153,17 +147,16 @@ const data = useDataStore()
 type RangeMode = 'month' | 'week' | 'year' | 'range'
 type Row = Record<string, unknown>
 
+/** 展示顺序对齐 App income_history_page：按周 / 按月 / 按年 / 自定义 */
 const MODE_LIST: { key: RangeMode; label: string }[] = [
-  { key: 'month', label: '按月' },
   { key: 'week', label: '按周' },
+  { key: 'month', label: '按月' },
   { key: 'year', label: '按年' },
   { key: 'range', label: '自定义' }
 ]
 
 const MIN_YEAR = 2000
 const MAX_YEAR = new Date().getFullYear() + 1
-
-const DAY_MS = 24 * 60 * 60 * 1000
 
 function num(v: unknown): number {
   const n = Number(v ?? 0)
@@ -204,6 +197,13 @@ function parseDate(s: string): number {
   return new Date(y, m - 1, d).getTime()
 }
 
+/** 起止区间文案：起止两端都带年份（同年也不省略，对齐 App _rangeLabel） */
+function rangeLabel(s: number, e: number): string {
+  const d0 = new Date(s)
+  const d1 = new Date(e)
+  return `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getFullYear()}年${d1.getMonth() + 1}月${d1.getDate()}日`
+}
+
 const mode = ref<RangeMode>('month')
 
 // 各模式状态（与 App income_history_page 对齐）
@@ -223,11 +223,11 @@ const pickREnd = ref(dateStr(rEnd.value))
 
 const modeList = MODE_LIST
 
-/** 当前模式时间范围 [s, e) 与标题 */
+/** 当前模式时间范围 [s, e) 与汇总标题 */
 function rangeOf(): { s: number; e: number; title: string } {
   if (mode.value === 'month') {
-    const s = monthStartOf(new Date(mYear.value, mMonth.value - 1, 1).getTime())
-    const e = monthStartOf(new Date(mYear.value, mMonth.value, 1).getTime())
+    const s = new Date(mYear.value, mMonth.value - 1, 1).getTime()
+    const e = new Date(mYear.value, mMonth.value, 1).getTime()
     return { s, e, title: `${mYear.value}年${mMonth.value}月收入` }
   }
   if (mode.value === 'week') {
@@ -235,11 +235,11 @@ function rangeOf(): { s: number; e: number; title: string } {
     const we = addDays(ws, 6)
     const d0 = new Date(ws)
     const d1 = new Date(we)
-    const title =
-      d0.getFullYear() === d1.getFullYear()
-        ? `${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getMonth() + 1}月${d1.getDate()}日 收入`
-        : `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getFullYear()}年${d1.getMonth() + 1}月${d1.getDate()}日 收入`
-    return { s: ws, e: addDays(we, 1), title }
+    return {
+      s: ws,
+      e: addDays(we, 1),
+      title: `${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getMonth() + 1}月${d1.getDate()}日 收入`
+    }
   }
   if (mode.value === 'year') {
     return {
@@ -250,13 +250,7 @@ function rangeOf(): { s: number; e: number; title: string } {
   }
   const s = dayStartOf(rStart.value)
   const e = addDays(dayStartOf(rEnd.value), 1)
-  const d0 = new Date(s)
-  const d1 = new Date(rEnd.value)
-  return {
-    s,
-    e,
-    title: `${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getMonth() + 1}月${d1.getDate()}日 收入`
-  }
+  return { s, e, title: `${rangeLabel(s, rEnd.value)} 收入` }
 }
 
 const bounds = computed(() => rangeOf())
@@ -265,18 +259,10 @@ const navLabel = computed(() => {
   if (mode.value === 'month') return `${mYear.value}年 ${mMonth.value}月`
   if (mode.value === 'week') {
     const ws = weekStartOf(weekAnchor.value)
-    const we = addDays(ws, 6)
-    const d0 = new Date(ws)
-    const d1 = new Date(we)
-    if (d0.getFullYear() === d1.getFullYear()) {
-      return `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getMonth() + 1}月${d1.getDate()}日`
-    }
-    return `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getFullYear()}年${d1.getMonth() + 1}月${d1.getDate()}日`
+    return rangeLabel(ws, addDays(ws, 6))
   }
   if (mode.value === 'year') return `${yYear.value}年`
-  const d0 = new Date(rStart.value)
-  const d1 = new Date(rEnd.value)
-  return `${d0.getMonth() + 1}月${d0.getDate()}日 - ${d1.getMonth() + 1}月${d1.getDate()}日`
+  return rangeLabel(rStart.value, rEnd.value)
 })
 
 const isCurrent = computed(() => {
@@ -306,6 +292,7 @@ interface RowView {
   amount: number
 }
 
+/** 明细行：按收款时间倒序，字段与 App _IncomeRowTile 一致 */
 const rows = computed<RowView[]>(() => {
   const { s, e } = bounds.value
   const arr = data.payments
@@ -318,11 +305,10 @@ const rows = computed<RowView[]>(() => {
     .sort((a, b) => num((b as Row)['paid_at']) - num((a as Row)['paid_at']))
   return arr.map((pay) => {
     const row = pay as Row
-    const t = num(row['paid_at'])
-    const d = new Date(t)
+    const d = new Date(num(row['paid_at']))
     return {
       id: row['id'],
-      day: String(d.getDate()).padStart(2, '0'),
+      day: String(d.getDate()),
       monthLabel: `${d.getMonth() + 1}月`,
       projectTitle: projectTitleOf(row['project_id']),
       typeText: payTypeText(row['type'], row['type_label']),
@@ -335,11 +321,8 @@ const rows = computed<RowView[]>(() => {
 const totalAmount = computed(() => Math.max(0, rows.value.reduce((s, r) => s + r.amount, 0)))
 
 const emptyText = computed(() => {
-  if (mode.value === 'month') {
-    const now = new Date()
-    if (mYear.value === now.getFullYear() && mMonth.value === now.getMonth() + 1) {
-      return '本月还没有收款记录\n登记收款后会显示在这里'
-    }
+  if (mode.value === 'month' && isCurrent.value) {
+    return '本月还没有收款记录\n登记收款后会显示在这里'
   }
   return '该时间段没有收款记录'
 })
@@ -347,6 +330,7 @@ const emptyText = computed(() => {
 // ---------- 模式与区间导航 ----------
 
 function switchMode(m: RangeMode) {
+  if (mode.value === m) return
   mode.value = m
 }
 
@@ -405,10 +389,10 @@ function goCurrent() {
 // ---------- 区间选择弹层 ----------
 
 const sheetTitle = computed(() => {
-  if (mode.value === 'month') return '选择月份'
+  if (mode.value === 'month') return ''
   if (mode.value === 'year') return '选择年份'
   if (mode.value === 'week') return '选择一周内的任意一天'
-  return '选择日期区间'
+  return '选择起止日期'
 })
 
 const weekDateStr = computed(() => dateStr(weekAnchor.value))
@@ -418,6 +402,22 @@ const yearOptions = computed(() => {
   for (let y = MAX_YEAR; y >= MIN_YEAR; y -= 1) arr.push(y)
   return arr
 })
+
+/** 月宫格：命中当前已选年月 */
+function isMonthSelected(mo: number): boolean {
+  return pickYear.value === mYear.value && mo === mMonth.value
+}
+
+/** 月宫格：未来月份不可选（对齐 App _MonthPickerSheet.isFuture） */
+function isMonthFuture(mo: number): boolean {
+  const now = new Date()
+  return pickYear.value === now.getFullYear() && mo > now.getMonth() + 1
+}
+
+function pickMonthCell(mo: number) {
+  if (isMonthFuture(mo)) return
+  pickMonth.value = mo
+}
 
 function openPicker() {
   pickYear.value = mode.value === 'year' ? yYear.value : mYear.value
@@ -477,48 +477,50 @@ onShow(() => {
 <style lang="scss" scoped>
 .page {
   padding: 24rpx;
-  padding-bottom: 60rpx;
+  padding-bottom: 48rpx;
   background: #f6f7fb;
   min-height: 100vh;
   box-sizing: border-box;
 }
 
-.mode-bar {
+/* 筛选模式切换（对齐 AppFilterChip：胶囊 + 品牌色 8% 底） */
+.filter-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 16rpx;
+  padding: 8rpx 0;
 }
 
-.mode-chip {
-  flex: 1;
-  text-align: center;
-  font-size: 26rpx;
-  color: #6b7280;
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 16rpx 0;
-  box-shadow: 0 2rpx 10rpx rgba(31, 36, 48, 0.04);
+.filter-chip {
+  font-size: 24rpx;
+  line-height: 1.2;
+  padding: 12rpx 24rpx;
+  border-radius: 40rpx;
+  color: #1f2430;
+  font-weight: 500;
+  background: rgba(74, 90, 240, 0.08);
 }
 
-.mode-chip.active {
+.filter-chip.active {
   color: #ffffff;
-  background: linear-gradient(135deg, #4a5af0, #7c5cf0);
-  font-weight: 600;
+  background: #4a5af0;
+  font-weight: 700;
 }
 
 .nav-row {
-  margin-top: 20rpx;
+  margin-top: 16rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: #fff;
   border-radius: 16rpx;
-  padding: 10rpx 16rpx;
+  padding: 6rpx 8rpx;
   box-shadow: 0 2rpx 10rpx rgba(31, 36, 48, 0.04);
 }
 
 .nav-btn {
   width: 72rpx;
-  height: 60rpx;
+  height: 72rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -538,29 +540,23 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  padding: 0 8rpx;
+  padding: 20rpx 8rpx;
 }
 
 .nav-label-text {
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: 34rpx;
+  font-weight: 700;
   color: #1f2430;
-  max-width: 420rpx;
+  max-width: 400rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.nav-caret {
-  margin-left: 10rpx;
-  font-size: 22rpx;
-  color: #8a93a6;
-}
-
 .today-btn {
   font-size: 22rpx;
   color: #4a5af0;
-  padding: 8rpx 14rpx;
+  padding: 10rpx 16rpx;
   border: 1rpx solid rgba(74, 90, 240, 0.35);
   border-radius: 24rpx;
   flex-shrink: 0;
@@ -568,78 +564,59 @@ onShow(() => {
 }
 
 .today-spacer {
-  width: 8rpx;
+  width: 88rpx;
   flex-shrink: 0;
 }
 
+/* 收入汇总卡（对齐 App _SummaryCard：标题 → 金额 → 笔数） */
 .summary-card {
-  margin-top: 20rpx;
+  margin: 8rpx 32rpx 16rpx;
   background: linear-gradient(135deg, #4a5af0 0%, #7c5cf0 100%);
   border-radius: 28rpx;
-  padding: 32rpx;
-  color: #ffffff;
-  box-shadow: 0 8rpx 24rpx rgba(74, 90, 240, 0.25);
-}
-
-.summary-top {
+  padding: 40rpx;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .summary-title {
   font-size: 26rpx;
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.summary-count {
-  font-size: 22rpx;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .summary-amount {
-  display: block;
   margin-top: 16rpx;
-  font-size: 56rpx;
+  font-size: 68rpx;
   font-weight: 700;
+  color: #ffffff;
   line-height: 1.2;
 }
 
-.summary-sub {
-  display: block;
-  margin-top: 14rpx;
+.summary-count {
+  margin-top: 28rpx;
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .section-head {
-  margin: 32rpx 4rpx 16rpx;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  padding: 16rpx 36rpx 8rpx;
 }
 
 .section-title {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 600;
   color: #1f2430;
 }
 
 .empty {
+  padding: 80rpx 40rpx;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 90rpx 30rpx;
-}
-
-.empty-icon {
-  font-size: 64rpx;
+  justify-content: center;
 }
 
 .empty-text {
-  margin-top: 20rpx;
   font-size: 26rpx;
-  color: #9ca3af;
+  color: #8a93a6;
   line-height: 1.6;
   text-align: center;
 }
@@ -647,22 +624,22 @@ onShow(() => {
 .row-list {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 14rpx;
 }
 
 .row-card {
   display: flex;
   align-items: center;
   background: #fff;
-  border-radius: 20rpx;
-  padding: 24rpx 26rpx;
+  border-radius: 28rpx;
+  padding: 26rpx;
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
 .row-date {
   width: 92rpx;
   height: 92rpx;
-  border-radius: 20rpx;
+  border-radius: 24rpx;
   background: rgba(74, 90, 240, 0.1);
   display: flex;
   flex-direction: column;
@@ -673,7 +650,7 @@ onShow(() => {
 }
 
 .row-day {
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 700;
   color: #4a5af0;
   line-height: 1.1;
@@ -682,7 +659,7 @@ onShow(() => {
 .row-mon {
   margin-top: 2rpx;
   font-size: 20rpx;
-  color: #6b7280;
+  color: rgba(74, 90, 240, 0.7);
 }
 
 .row-main {
@@ -703,7 +680,7 @@ onShow(() => {
 
 .row-sub {
   margin-top: 6rpx;
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: #8a93a6;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -712,16 +689,10 @@ onShow(() => {
 
 .row-amount {
   margin-left: 16rpx;
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 700;
   color: #4a5af0;
   white-space: nowrap;
-}
-
-.chevron {
-  margin-left: 12rpx;
-  font-size: 32rpx;
-  color: #c4c9d4;
 }
 
 /* 底部弹层 */
@@ -740,15 +711,15 @@ onShow(() => {
 .sheet {
   width: 100%;
   background: #fff;
-  border-radius: 28rpx 28rpx 0 0;
-  padding: 30rpx 30rpx calc(30rpx + env(safe-area-inset-bottom));
+  border-radius: 40rpx 40rpx 0 0;
+  padding: 24rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
 .sheet-title {
   text-align: center;
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: 32rpx;
+  font-weight: 700;
   color: #1f2430;
   margin-bottom: 24rpx;
 }
@@ -757,27 +728,24 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 48rpx;
   margin-bottom: 20rpx;
 }
 
 .year-btn {
-  width: 72rpx;
-  height: 60rpx;
+  width: 88rpx;
+  height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 40rpx;
   color: #4a5af0;
-  background: #eef0ff;
-  border-radius: 14rpx;
 }
 
 .year-text {
-  font-size: 32rpx;
-  font-weight: 600;
+  flex: 1;
+  font-size: 34rpx;
+  font-weight: 700;
   color: #1f2430;
-  min-width: 120rpx;
   text-align: center;
 }
 
@@ -792,15 +760,21 @@ onShow(() => {
   text-align: center;
   padding: 22rpx 0;
   border-radius: 16rpx;
-  font-size: 26rpx;
-  color: #3a4150;
-  background: #f2f4fa;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1f2430;
+  background: rgba(74, 90, 240, 0.08);
 }
 
 .month-cell.active {
   color: #fff;
   background: #4a5af0;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.month-cell.future {
+  color: rgba(140, 146, 166, 0.4);
+  background: transparent;
 }
 
 .year-scroll {
@@ -812,7 +786,7 @@ onShow(() => {
   text-align: center;
   padding: 20rpx 0;
   font-size: 28rpx;
-  color: #3a4150;
+  color: #1f2430;
 }
 
 .year-cell.active {
@@ -833,14 +807,14 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #f2f4fa;
+  background: rgba(74, 90, 240, 0.08);
   border-radius: 16rpx;
-  padding: 24rpx 24rpx;
+  padding: 24rpx;
 }
 
 .picker-label {
   font-size: 26rpx;
-  color: #6b7280;
+  color: #8a93a6;
 }
 
 .picker-value {

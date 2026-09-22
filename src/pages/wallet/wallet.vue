@@ -8,162 +8,263 @@
     </view>
 
     <template v-else>
-      <!-- 余额渐变卡 -->
+      <!-- 余额卡 -->
       <view class="balance-card">
-        <text class="balance-label">可用余额（元）</text>
+        <text class="balance-label">可提现余额</text>
         <text class="balance-value">¥{{ formatAmount(balance) }}</text>
         <view class="stat-row">
           <view class="stat">
-            <text class="stat-num">{{ formatAmount(totalPaid) }}</text>
-            <text class="stat-label">收款合计</text>
+            <text class="stat-line">累计收款</text>
+            <text class="stat-line">¥{{ formatAmount(totalPaid) }}</text>
           </view>
           <view class="stat">
-            <text class="stat-num">{{ formatAmount(totalRecharged) }}</text>
-            <text class="stat-label">累计充值</text>
+            <text class="stat-line">累计充值</text>
+            <text class="stat-line">¥{{ formatAmount(totalRecharged) }}</text>
           </view>
           <view class="stat">
-            <text class="stat-num">{{ formatAmount(totalWithdrawn) }}</text>
-            <text class="stat-label">已提现</text>
+            <text class="stat-line">已提现</text>
+            <text class="stat-line">¥{{ formatAmount(totalWithdrawn) }}</text>
           </view>
         </view>
       </view>
 
-      <!-- 操作按钮 -->
+      <!-- 操作区：充值入口按 App 产品策略隐藏（openRecharge 实现保留，后续可恢复） -->
       <view class="action-row">
-        <view class="action-btn recharge" hover-class="action-hover" @tap="openRecharge">充值</view>
-        <view class="action-btn plain" hover-class="action-hover" @tap="openWithdraw">申请提现</view>
+        <view
+          v-if="SHOW_RECHARGE_ENTRY"
+          class="action-btn recharge"
+          hover-class="action-hover"
+          @tap="openRecharge"
+        >
+          充值
+        </view>
+        <view
+          class="action-btn primary-fill"
+          :class="{ disabled: busy || balance <= 0 }"
+          hover-class="action-hover"
+          @tap="openWithdraw"
+        >
+          申请提现
+        </view>
       </view>
 
       <!-- 提现账户 -->
-      <view class="card account-card" @tap="openWithdraw">
+      <view class="card account-card" @tap="openAccountSheet">
         <view class="icon-circle">🏦</view>
         <view class="account-main">
-          <text class="account-title">{{ accountTitle }}</text>
-          <text v-if="account" class="account-sub">{{ accountMethodLabel }} · {{ maskAccountNo(account.no) }}</text>
-          <text v-else class="account-sub">设置提现收款账户（微信 / 支付宝 / 银行卡）</text>
+          <text class="account-title">提现账户</text>
+          <text class="account-sub">{{ accountSub }}</text>
         </view>
         <text class="arrow">›</text>
       </view>
 
-      <view class="notice">提现申请提交后由人工核对打款，到账后状态更新为「已提现」；接入官方收款通道后自动到账。</view>
+      <view class="notice">{{ WITHDRAW_NOTICE }}</view>
 
-      <!-- 往来记录 -->
+      <!-- 充值记录 -->
       <view class="section-head">
         <text class="section-title">充值记录</text>
-        <text class="section-tip">出示收款码付款后点「确认到账」</text>
       </view>
       <view v-if="!recharges.length" class="card empty-card small">
-        <text class="empty-text">暂无充值记录</text>
+        <text class="empty-text">还没有充值记录</text>
       </view>
       <view v-else class="row-list">
-        <view v-for="(r, i) in recharges" :key="String(r.id)" class="row-card">
-          <view class="row-date">
-            <text class="row-day">{{ dayText(r.createdAt) }}</text>
-            <text class="row-mon">{{ timeText(r.createdAt) }}</text>
+        <view v-for="r in recharges" :key="String(r.id)" class="row-card">
+          <view class="row-badge badge-accent">
+            <text class="badge-txt accent">{{ methodLabel(r.method).charAt(0) }}</text>
           </view>
           <view class="row-main">
-            <text class="row-title">充值 · {{ methodLabel(r.method) }}</text>
-            <text class="row-sub">{{ r.note || '收款码转账' }}</text>
+            <text class="row-amount plus">+¥{{ formatAmount(r.amount) }}</text>
+            <text class="row-sub">{{ methodLabel(r.method) }} · {{ r.note }}</text>
+            <text class="row-sub">{{ formatDateTime(r.createdAt) }}</text>
           </view>
           <view class="row-right">
-            <text class="row-amount plus">+¥{{ formatAmount(r.amount) }}</text>
-            <view v-if="r.status === 'pending'" class="mini-btn" @tap="confirmArrive(r.id)">确认到账</view>
-            <text v-else class="done-text">已到账</text>
+            <text class="chip" :class="rechargeChipClass(r.status)">{{ rechargeStatusText(r.status) }}</text>
+            <view
+              v-if="r.status !== 'done'"
+              class="mini-btn"
+              hover-class="action-hover"
+              @tap="markRecharge(r.id)"
+            >
+              标记到账
+            </view>
           </view>
         </view>
       </view>
 
+      <!-- 提现记录 -->
       <view class="section-head">
         <text class="section-title">提现记录</text>
       </view>
       <view v-if="!withdrawals.length" class="card empty-card small">
-        <text class="empty-text">暂无提现记录</text>
+        <text class="empty-text">还没有提现记录</text>
+        <text class="empty-text">收款到账后可在这里申请提现</text>
       </view>
       <view v-else class="row-list">
-        <view v-for="(w, i) in withdrawals" :key="String(w.id)" class="row-card">
-          <view class="row-date">
-            <text class="row-day">{{ dayText(w.createdAt) }}</text>
-            <text class="row-mon">{{ timeText(w.createdAt) }}</text>
+        <view v-for="w in withdrawals" :key="String(w.id)" class="row-card">
+          <view class="row-badge badge-primary">
+            <text class="badge-txt primary">{{ methodLabel(w.method).charAt(0) }}</text>
           </view>
           <view class="row-main">
-            <text class="row-title">提现 · {{ methodLabel(w.method) }}</text>
-            <text class="row-sub">{{ w.accountName }}（{{ w.accountNo }}）</text>
+            <text class="row-amount">-¥{{ formatAmount(w.amount) }}</text>
+            <text class="row-sub">{{ methodLabel(w.method) }} · {{ w.accountName }} {{ w.accountNo }}</text>
+            <text class="row-sub">{{ formatDateTime(w.createdAt) }}</text>
           </view>
           <view class="row-right">
-            <text class="row-amount minus">-¥{{ formatAmount(w.amount) }}</text>
-            <view v-if="w.status === 'pending'" class="mini-btn" @tap="markDone(w.id)">已到账</view>
-            <text v-else class="done-text">{{ withdrawStatusText(w.status) }}</text>
+            <text class="chip" :class="withdrawChipClass(w.status)">{{ withdrawStatusText(w.status) }}</text>
+            <view
+              v-if="w.status !== 'done'"
+              class="mini-btn"
+              hover-class="action-hover"
+              @tap="markWithdraw(w.id)"
+            >
+              标记到账
+            </view>
           </view>
         </view>
       </view>
 
-      <!-- 充值底部弹层 -->
+      <!-- 充值弹层（金额 + 方式 + 下一步） -->
       <view v-if="showRecharge" class="sheet-mask" @tap="showRecharge = false">
         <view class="sheet" @tap.stop>
           <view class="sheet-title">余额充值</view>
-          <picker class="picker-row" mode="selector" :range="rechargeLabels" @change="onRechargeMethodChange">
+          <view class="field-row">
+            <text class="field-label">充值金额（元）</text>
+            <view class="field-input-wrap">
+              <text class="field-prefix">¥</text>
+              <input
+                class="field-input"
+                type="digit"
+                v-model="rechargeAmount"
+                placeholder="如 100"
+                placeholder-class="ph"
+              />
+            </view>
+          </view>
+          <view class="quick-row">
+            <view
+              v-for="q in QUICK_AMOUNTS"
+              :key="q"
+              class="quick-chip"
+              :class="{ active: rechargeAmount === q }"
+              @tap="rechargeAmount = q"
+            >
+              ¥{{ q }}
+            </view>
+          </view>
+          <picker class="picker-row" mode="selector" :range="rechargeLabels" :value="rechargeMethodIdx" @change="onRechargeMethodChange">
             <view class="picker-cell">
               <text class="picker-label">充值方式</text>
               <text class="picker-value">{{ rechargeLabels[rechargeMethodIdx] }}</text>
             </view>
           </picker>
-          <view class="field-row">
-            <text class="field-label">充值金额</text>
-            <view class="field-input-wrap">
-              <text class="field-prefix">¥</text>
-              <input class="field-input" type="digit" v-model="rechargeAmount" placeholder="请输入金额" placeholder-class="ph" />
-            </view>
+          <view class="sheet-actions">
+            <view class="sheet-btn ghost" hover-class="action-hover" @tap="showRecharge = false">取消</view>
+            <view class="sheet-btn primary" hover-class="action-hover" @tap="nextRecharge">下一步</view>
           </view>
-          <view class="quick-row">
-            <view v-for="q in quickAmounts" :key="q" class="quick-chip" :class="{ active: rechargeAmount === q }" @tap="rechargeAmount = q">{{ q }}</view>
-          </view>
-          <text class="sheet-notice">付款后请回到「充值记录」点击「确认到账」完成入账。</text>
-          <view class="sheet-btn primary" hover-class="action-hover" :class="{ disabled: busy }" @tap="confirmRecharge">出示收款码并登记</view>
-        </view>
-      </view>
-
-      <!-- 提现底部弹层 -->
-      <view v-if="showWithdraw" class="sheet-mask" @tap="showWithdraw = false">
-        <view class="sheet" @tap.stop>
-          <view class="sheet-title">申请提现</view>
-          <picker class="picker-row" mode="selector" :range="withdrawLabels" @change="onWithdrawMethodChange">
-            <view class="picker-cell">
-              <text class="picker-label">收款方式</text>
-              <text class="picker-value">{{ withdrawLabels[withdrawMethodIdx] }}</text>
-            </view>
-          </picker>
-          <view class="field-row">
-            <text class="field-label">收款人</text>
-            <input class="field-input plain" v-model="draft.name" placeholder="请输入收款人姓名" placeholder-class="ph" />
-          </view>
-          <view class="field-row">
-            <text class="field-label">账号</text>
-            <input class="field-input plain" v-model="draft.no" :placeholder="withdrawNoHint" placeholder-class="ph" />
-          </view>
-          <view class="field-row">
-            <text class="field-label">提现金额</text>
-            <view class="field-input-wrap">
-              <text class="field-prefix">¥</text>
-              <input class="field-input" type="digit" v-model="withdrawAmount" placeholder="请输入金额" placeholder-class="ph" />
-            </view>
-          </view>
-          <text class="sheet-notice">余额不足时不可提现；提交后由人工核对打款。</text>
-          <view class="sheet-btn primary" hover-class="action-hover" :class="{ disabled: busy }" @tap="confirmWithdraw">提交提现申请</view>
         </view>
       </view>
 
       <!-- 出示收款码弹层 -->
-      <view v-if="showCodes" class="sheet-mask" @tap="showCodes = false">
+      <view v-if="showCodes" class="sheet-mask" @tap="closeCodes">
         <view class="sheet codes-sheet" @tap.stop>
-          <view class="sheet-title">向付款方出示收款码</view>
-          <view v-if="codeImages.length" class="code-imgs">
-            <view v-for="c in codeImages" :key="c.kind" class="code-item">
-              <image class="code-img" :src="c.path" mode="aspectFit" @tap="preview(c.path)" />
-              <text class="code-name">{{ c.label }}收款码</text>
+          <view class="sheet-title">出示收款码</view>
+          <text class="sheet-sub">请客户扫码付款</text>
+          <view v-if="codeTabs.length > 1" class="seg-row">
+            <view
+              v-for="t in codeTabs"
+              :key="t.key"
+              class="seg-chip"
+              :class="{ active: codeTab === t.key }"
+              @tap="codeTab = t.key"
+            >
+              {{ t.label }}
             </view>
           </view>
-          <text class="sheet-notice">付款完成后，回到「充值记录」点击该笔记录右侧「确认到账」，余额即可入账。</text>
-          <view class="sheet-btn ghost" hover-class="action-hover" @tap="showCodes = false">知道了</view>
+          <image
+            v-if="currentCode"
+            class="code-img"
+            :src="currentCode"
+            mode="aspectFit"
+            @tap="preview(currentCode)"
+          />
+          <text v-else class="code-empty">该收款码尚未配置</text>
+          <view class="tip-box">
+            <text class="tip-txt">客户付款到账后，请返回点击「登记收款」完成入账。</text>
+          </view>
+          <view class="sheet-btn primary" hover-class="action-hover" @tap="closeCodes">关闭</view>
+        </view>
+      </view>
+
+      <!-- 确认到账弹层 -->
+      <view v-if="showArrive" class="sheet-mask" @tap="confirmArrive(false)">
+        <view class="sheet" @tap.stop>
+          <view class="sheet-title">确认到账</view>
+          <text class="arrive-text">
+            请确认 ¥{{ formatAmount(pendingRecharge.amount) }} 已通过{{ methodLabel(pendingRecharge.method) }}支付成功。
+          </text>
+          <text class="arrive-text">
+            选「已到账」立即入账；选「未到账」可稍后在充值记录里标记到账。
+          </text>
+          <view class="sheet-actions">
+            <view class="sheet-btn ghost" hover-class="action-hover" @tap="confirmArrive(false)">未到账</view>
+            <view class="sheet-btn primary" hover-class="action-hover" @tap="confirmArrive(true)">已到账</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 提现账户编辑弹层 -->
+      <view v-if="showAccountSheet" class="sheet-mask" @tap="showAccountSheet = false">
+        <view class="sheet" @tap.stop>
+          <view class="sheet-title left">提现账户</view>
+          <picker class="picker-row" mode="selector" :range="withdrawLabels" :value="accMethodIdx" @change="onAccMethodChange">
+            <view class="picker-cell">
+              <text class="picker-label">提现方式</text>
+              <text class="picker-value">{{ withdrawLabels[accMethodIdx] }}</text>
+            </view>
+          </picker>
+          <view class="field-row">
+            <input
+              class="field-input plain"
+              v-model="accDraft.no"
+              :placeholder="accNoHint"
+              placeholder-class="ph"
+            />
+          </view>
+          <view class="field-row">
+            <input
+              class="field-input plain"
+              v-model="accDraft.name"
+              placeholder="收款人姓名"
+              placeholder-class="ph"
+            />
+          </view>
+          <view class="sheet-btn primary" hover-class="action-hover" @tap="saveAccountSheet">保存</view>
+        </view>
+      </view>
+
+      <!-- 提现弹层（金额 + 提现至账户） -->
+      <view v-if="showWithdraw" class="sheet-mask" @tap="showWithdraw = false">
+        <view class="sheet" @tap.stop>
+          <view class="sheet-title">申请提现</view>
+          <view class="field-row">
+            <text class="field-label">提现金额（元） *</text>
+            <view class="field-input-wrap">
+              <input
+                class="field-input"
+                type="digit"
+                v-model="withdrawAmount"
+                :placeholder="`可提现 ¥${formatAmount(balance)}`"
+                placeholder-class="ph"
+              />
+            </view>
+          </view>
+          <view class="tip-box">
+            <text class="tip-txt">提现至【{{ accountMethodLabel }}】{{ account?.name }} {{ account?.no }}</text>
+          </view>
+          <view class="sheet-actions">
+            <view class="sheet-btn ghost" hover-class="action-hover" @tap="showWithdraw = false">取消</view>
+            <view class="sheet-btn primary" :class="{ disabled: busy }" hover-class="action-hover" @tap="submitWithdraw">提交</view>
+          </view>
         </view>
       </view>
     </template>
@@ -175,24 +276,28 @@ import { computed, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { useDataStore } from '@/store/data'
-import { formatAmount, formatDate, maskPhone } from '@/utils/format'
+import { formatAmount, formatDateTime } from '@/utils/format'
 import {
   addRecharge,
   addWithdrawal,
   getPayCodePath,
   hasAnyPayCode,
+  isAccountFilled,
   loadAccount,
   loadRecharges,
   loadWithdrawals,
   markRechargeDone,
   markWithdrawDone,
   methodLabel,
+  rechargeStatusText,
   RECHARGE_METHODS,
   saveAccount,
   withdrawStatusText,
   WITHDRAW_METHODS,
+  WITHDRAW_NOTICE,
   yuanToFen,
   type PayCodeKind,
+  type RechargeMethodKey,
   type RechargeRec,
   type WithdrawAccount,
   type WithdrawRec,
@@ -209,6 +314,11 @@ function num(v: unknown): number {
 const user = useUserStore()
 const data = useDataStore()
 
+/** 充值入口开关：App 当前产品策略隐藏充值按钮（流程保留，后续可恢复） */
+const SHOW_RECHARGE_ENTRY = false
+
+const QUICK_AMOUNTS = ['10', '50', '100', '500']
+
 const balance = ref(0)
 const totalPaid = ref(0)
 const totalRecharged = ref(0)
@@ -218,52 +328,59 @@ const withdrawals = ref<WithdrawRec[]>([])
 const account = ref<WithdrawAccount | null>(null)
 const busy = ref(false)
 
-const quickAmounts = ['10', '50', '100', '500']
-
 // ---------- 弹层状态 ----------
 const showRecharge = ref(false)
-const showWithdraw = ref(false)
 const showCodes = ref(false)
-const rechargeMethodIdx = ref(0)
+const showArrive = ref(false)
+const showAccountSheet = ref(false)
+const showWithdraw = ref(false)
+
 const rechargeAmount = ref('')
-const withdrawMethodIdx = ref(0)
+const rechargeMethodIdx = ref(0)
+const codeTab = ref<PayCodeKind>('wechat')
+const pendingRecharge = reactive<{ amount: number; method: RechargeMethodKey }>({
+  amount: 0,
+  method: 'wechat'
+})
+const accMethodIdx = ref(0)
+const accDraft = reactive({ name: '', no: '' })
 const withdrawAmount = ref('')
-const draft = reactive({ name: '', no: '' })
 
 const rechargeLabels = RECHARGE_METHODS.map((m) => m.label)
 const withdrawLabels = WITHDRAW_METHODS.map((m) => m.label)
-const withdrawNoHint = computed(() => WITHDRAW_METHODS[withdrawMethodIdx.value].noHint)
+const accNoHint = computed(() => WITHDRAW_METHODS[accMethodIdx.value]?.noHint ?? '')
 
 const accountMethodLabel = computed(() => {
-  if (!account.value) return ''
-  const found = WITHDRAW_METHODS.find((m) => m.key === account.value?.method)
-  return found ? found.label : ''
+  const acc = account.value
+  return acc ? methodLabel(acc.method) : ''
 })
 
-const accountTitle = computed(() => (account.value ? '提现账户' : '设置提现账户'))
+const accountSub = computed(() => {
+  const acc = account.value
+  if (!isAccountFilled(acc)) return '未设置，点击配置收款账户'
+  return `${methodLabel(acc!.method)} · ${acc!.name} ${acc!.no}`
+})
 
-function maskAccountNo(no: string): string {
-  if (no.length <= 4) return no
-  return `****${no.slice(-4)}`
-}
-
-const codeImages = computed(() => {
-  const arr: { kind: string; label: string; path: string }[] = []
-  const wx = getPayCodePath('wechat')
-  const ali = getPayCodePath('alipay')
-  if (wx) arr.push({ kind: 'wechat', label: '微信', path: wx })
-  if (ali) arr.push({ kind: 'alipay', label: '支付宝', path: ali })
+const codeTabs = computed(() => {
+  const arr: { key: PayCodeKind; label: string }[] = []
+  if (getPayCodePath('wechat')) arr.push({ key: 'wechat', label: '微信' })
+  if (getPayCodePath('alipay')) arr.push({ key: 'alipay', label: '支付宝' })
   return arr
 })
 
-function dayText(ts: number): string {
-  const d = new Date(ts)
-  return String(d.getDate()).padStart(2, '0')
+const currentCode = computed(() => {
+  const first = codeTabs.value[0]
+  return getPayCodePath(codeTab.value) || (first ? getPayCodePath(first.key) : '')
+})
+
+function rechargeChipClass(s: RechargeRec['status']): string {
+  return s === 'done' ? 'chip-accent' : 'chip-warn'
 }
 
-function timeText(ts: number): string {
-  const d = new Date(ts)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+function withdrawChipClass(s: WithdrawRec['status']): string {
+  if (s === 'done') return 'chip-accent'
+  if (s === 'processing') return 'chip-primary'
+  return 'chip-warn'
 }
 
 function recompute() {
@@ -299,6 +416,7 @@ function preview(path: string) {
 // ---------- 充值 ----------
 function openRecharge() {
   if (busy.value) return
+  // 预检：未配置收款码先引导去设置
   if (!hasAnyPayCode()) {
     uni.showModal({
       title: '尚未配置收款码',
@@ -311,8 +429,8 @@ function openRecharge() {
     })
     return
   }
-  rechargeMethodIdx.value = 0
   rechargeAmount.value = ''
+  rechargeMethodIdx.value = 0
   showRecharge.value = true
 }
 
@@ -320,63 +438,67 @@ function onRechargeMethodChange(e: { detail: { value: number | string } }) {
   rechargeMethodIdx.value = Number(e.detail.value) || 0
 }
 
-function confirmRecharge() {
-  if (busy.value) return
+function nextRecharge() {
   const fen = yuanToFen(rechargeAmount.value)
   if (fen <= 0) {
     uni.showToast({ title: '请输入正确的充值金额', icon: 'none' })
     return
   }
-  const method = RECHARGE_METHODS[rechargeMethodIdx.value]?.key ?? 'wechat'
+  pendingRecharge.amount = fen
+  pendingRecharge.method = RECHARGE_METHODS[rechargeMethodIdx.value]?.key ?? 'wechat'
+  showRecharge.value = false
+  // 出示收款码供扫码付款
+  codeTab.value = codeTabs.value[0]?.key ?? 'wechat'
+  showCodes.value = true
+}
+
+function closeCodes() {
+  showCodes.value = false
+  showArrive.value = true
+}
+
+function confirmArrive(arrived: boolean) {
+  if (busy.value) return
   busy.value = true
   try {
-    addRecharge({ amount: fen, method })
-    showRecharge.value = false
+    addRecharge({
+      amount: pendingRecharge.amount,
+      method: pendingRecharge.method,
+      status: arrived ? 'done' : 'pending',
+      note: arrived ? '手动确认到账' : '待确认'
+    })
+    showArrive.value = false
     refreshLedger()
-    showCodes.value = true
+    uni.showToast({
+      title: arrived
+        ? `充值成功，¥${formatAmount(pendingRecharge.amount)} 已入账`
+        : '已登记充值申请，到账后请在记录里标记到账',
+      icon: 'none'
+    })
   } finally {
     busy.value = false
   }
 }
 
-function confirmArrive(id: number) {
-  uni.showModal({
-    title: '确认到账',
-    content: '请确认已收到该笔充值款项，确认后余额将立即入账。',
-    confirmText: '确认到账',
-    cancelText: '再看看',
-    success: (res) => {
-      if (!res.confirm) return
-      markRechargeDone(id)
-      refreshLedger()
-      uni.showToast({ title: '充值已到账', icon: 'success' })
-    }
-  })
+/** 充值记录：标记到账（人工确认） */
+function markRecharge(id: number) {
+  markRechargeDone(id)
+  refreshLedger()
 }
 
 // ---------- 提现 ----------
 function openWithdraw() {
-  if (busy.value) return
-  const acc = account.value
-  withdrawAmount.value = ''
-  if (acc) {
-    const idx = WITHDRAW_METHODS.findIndex((m) => m.key === acc.method)
-    withdrawMethodIdx.value = idx >= 0 ? idx : 0
-    draft.name = acc.name
-    draft.no = acc.no
-  } else {
-    withdrawMethodIdx.value = 0
-    draft.name = ''
-    draft.no = ''
+  if (busy.value || balance.value <= 0) return
+  if (!isAccountFilled(account.value)) {
+    uni.showToast({ title: '请先设置提现账户', icon: 'none' })
+    openAccountSheet()
+    return
   }
+  withdrawAmount.value = ''
   showWithdraw.value = true
 }
 
-function onWithdrawMethodChange(e: { detail: { value: number | string } }) {
-  withdrawMethodIdx.value = Number(e.detail.value) || 0
-}
-
-function confirmWithdraw() {
+function submitWithdraw() {
   if (busy.value) return
   const fen = yuanToFen(withdrawAmount.value)
   if (fen <= 0) {
@@ -384,32 +506,64 @@ function confirmWithdraw() {
     return
   }
   if (fen > balance.value) {
-    uni.showToast({ title: '提现金额超过可用余额', icon: 'none' })
+    uni.showToast({ title: '提现金额不能超过可提现余额', icon: 'none' })
     return
   }
-  const name = draft.name.trim()
-  const no = draft.no.trim()
-  if (!name || !no) {
-    uni.showToast({ title: '请填写完整的收款人姓名与账号', icon: 'none' })
+  const acc = account.value
+  if (!isAccountFilled(acc)) {
+    uni.showToast({ title: '请先设置提现账户', icon: 'none' })
     return
   }
-  const method = WITHDRAW_METHODS[withdrawMethodIdx.value]?.key as WithdrawMethodKey
+  const method: WithdrawMethodKey = acc!.method
   busy.value = true
   try {
-    addWithdrawal({ amount: fen, method, accountName: name, accountNo: no })
-    saveAccount({ method, name, no })
+    const note = '提现申请已提交，待人工核对打款'
+    addWithdrawal({
+      amount: fen,
+      method,
+      accountName: acc!.name,
+      accountNo: acc!.no,
+      note
+    })
     showWithdraw.value = false
     refreshLedger()
-    uni.showToast({ title: '提现申请已提交，等待人工打款', icon: 'none' })
+    uni.showToast({ title: note, icon: 'none' })
   } finally {
     busy.value = false
   }
 }
 
-function markDone(id: number) {
+/** 提现记录：标记到账 / 已提现（人工打款完成后） */
+function markWithdraw(id: number) {
   markWithdrawDone(id)
   refreshLedger()
-  uni.showToast({ title: '已更新为已提现', icon: 'none' })
+}
+
+// ---------- 提现账户 ----------
+function openAccountSheet() {
+  const acc = account.value
+  const idx = acc ? WITHDRAW_METHODS.findIndex((m) => m.key === acc.method) : 0
+  accMethodIdx.value = idx >= 0 ? idx : 0
+  accDraft.name = acc?.name ?? ''
+  accDraft.no = acc?.no ?? ''
+  showAccountSheet.value = true
+}
+
+function onAccMethodChange(e: { detail: { value: number | string } }) {
+  accMethodIdx.value = Number(e.detail.value) || 0
+}
+
+function saveAccountSheet() {
+  const name = accDraft.name.trim()
+  const no = accDraft.no.trim()
+  if (!name || !no) {
+    uni.showToast({ title: '请填写完整的收款人姓名与账号', icon: 'none' })
+    return
+  }
+  const method: WithdrawMethodKey = WITHDRAW_METHODS[accMethodIdx.value]?.key ?? 'wechat'
+  saveAccount({ method, name, no })
+  showAccountSheet.value = false
+  refreshLedger()
 }
 </script>
 
@@ -431,74 +585,69 @@ function markDone(id: number) {
 
 .balance-card {
   border-radius: 24rpx;
-  padding: 36rpx 32rpx 30rpx;
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
+  padding: 40rpx 32rpx 32rpx;
+  background: linear-gradient(135deg, #4a5af0 0%, #7c5cf0 100%);
   color: #fff;
   display: flex;
   flex-direction: column;
 }
 
 .balance-label {
-  font-size: 24rpx;
-  opacity: 0.85;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .balance-value {
-  margin-top: 10rpx;
-  font-size: 64rpx;
+  margin-top: 16rpx;
+  font-size: 68rpx;
   font-weight: 700;
   line-height: 1.15;
 }
 
 .stat-row {
-  margin-top: 32rpx;
+  margin-top: 28rpx;
   display: flex;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.22);
-  padding-top: 26rpx;
 }
 
 .stat {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
 }
 
-.stat-num {
-  font-size: 30rpx;
-  font-weight: 600;
-}
-
-.stat-label {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  opacity: 0.8;
+.stat-line {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.5;
 }
 
 .action-row {
   display: flex;
   gap: 20rpx;
-  margin-top: 22rpx;
+  margin: 24rpx 8rpx 8rpx;
 }
 
 .action-btn {
   flex: 1;
   text-align: center;
-  padding: 22rpx 0;
-  border-radius: 18rpx;
-  font-size: 28rpx;
+  padding: 24rpx 0;
+  border-radius: 20rpx;
+  font-size: 30rpx;
   font-weight: 600;
 }
 
 .action-btn.recharge {
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
+  background: #eef0fe;
+  color: #4a5af0;
+}
+
+.action-btn.primary-fill {
+  background: #4a5af0;
   color: #fff;
 }
 
-.action-btn.plain {
-  background: #fff;
-  color: #1f2430;
-  border: 1rpx solid #e5e8f0;
+.action-btn.disabled {
+  opacity: 0.45;
 }
 
 .action-hover {
@@ -540,7 +689,7 @@ function markDone(id: number) {
 
 .account-sub {
   margin-top: 6rpx;
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: #8a93a6;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -556,27 +705,22 @@ function markDone(id: number) {
 .notice {
   margin-top: 18rpx;
   padding: 0 8rpx;
-  font-size: 22rpx;
-  color: #9ca3af;
-  line-height: 1.6;
+  font-size: 24rpx;
+  color: #8a93a6;
+  line-height: 1.5;
 }
 
 .section-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 30rpx 8rpx 14rpx;
+  margin: 32rpx 8rpx 16rpx;
 }
 
 .section-title {
-  font-size: 26rpx;
+  font-size: 32rpx;
   font-weight: 600;
-  color: #1f2430;
-}
-
-.section-tip {
-  font-size: 20rpx;
-  color: #b6bcc9;
+  color: #1b2233;
 }
 
 .empty-card {
@@ -587,7 +731,7 @@ function markDone(id: number) {
 }
 
 .empty-card.small {
-  padding: 36rpx 24rpx;
+  padding: 40rpx 24rpx;
 }
 
 .empty-icon {
@@ -595,7 +739,7 @@ function markDone(id: number) {
 }
 
 .empty-text {
-  margin-top: 16rpx;
+  margin-top: 8rpx;
   font-size: 26rpx;
   color: #9ca3af;
   text-align: center;
@@ -605,7 +749,7 @@ function markDone(id: number) {
 .primary-btn {
   margin-top: 26rpx;
   padding: 16rpx 64rpx;
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
+  background: linear-gradient(135deg, #4a5af0 0%, #7c5cf0 100%);
   color: #fff;
   border-radius: 44rpx;
   font-size: 28rpx;
@@ -627,23 +771,36 @@ function markDone(id: number) {
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
-.row-date {
-  width: 84rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.row-badge {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 20rpx;
   margin-right: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.row-day {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #1f2430;
+.row-badge.badge-accent {
+  background: rgba(22, 160, 133, 0.1);
 }
 
-.row-mon {
-  font-size: 20rpx;
-  color: #b6bcc9;
+.row-badge.badge-primary {
+  background: rgba(74, 90, 240, 0.1);
+}
+
+.badge-txt {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.badge-txt.accent {
+  color: #16a085;
+}
+
+.badge-txt.primary {
+  color: #4a5af0;
 }
 
 .row-main {
@@ -653,15 +810,21 @@ function markDone(id: number) {
   flex-direction: column;
 }
 
-.row-title {
-  font-size: 28rpx;
-  color: #1f2430;
+.row-amount {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1b2233;
+}
+
+.row-amount.plus {
+  color: #16a085;
 }
 
 .row-sub {
   margin-top: 4rpx;
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: #8a93a6;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -674,32 +837,35 @@ function markDone(id: number) {
   margin-left: 12rpx;
 }
 
-.row-amount {
-  font-size: 28rpx;
+.chip {
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
   font-weight: 600;
 }
 
-.row-amount.plus {
-  color: #2e9e5b;
+.chip.chip-warn {
+  color: #e67e22;
+  background: rgba(230, 126, 34, 0.12);
 }
 
-.row-amount.minus {
-  color: #e07856;
+.chip.chip-accent {
+  color: #16a085;
+  background: rgba(22, 160, 133, 0.12);
+}
+
+.chip.chip-primary {
+  color: #4a5af0;
+  background: rgba(74, 90, 240, 0.12);
 }
 
 .mini-btn {
-  margin-top: 8rpx;
-  font-size: 20rpx;
+  margin-top: 10rpx;
+  font-size: 22rpx;
   color: #4a5af0;
   padding: 6rpx 18rpx;
   border: 1rpx solid rgba(74, 90, 240, 0.45);
   border-radius: 24rpx;
-}
-
-.done-text {
-  margin-top: 8rpx;
-  font-size: 20rpx;
-  color: #9ca3af;
 }
 
 .sheet-mask {
@@ -721,10 +887,23 @@ function markDone(id: number) {
 
 .sheet-title {
   text-align: center;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #1f2430;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1b2233;
   margin-bottom: 24rpx;
+}
+
+.sheet-title.left {
+  text-align: left;
+}
+
+.sheet-sub {
+  display: block;
+  text-align: center;
+  margin-top: -14rpx;
+  margin-bottom: 20rpx;
+  font-size: 26rpx;
+  color: #8a93a6;
 }
 
 .picker-row {
@@ -764,7 +943,7 @@ function markDone(id: number) {
 .field-label {
   font-size: 26rpx;
   color: #1f2430;
-  width: 150rpx;
+  margin-right: 16rpx;
   flex-shrink: 0;
 }
 
@@ -817,24 +996,81 @@ function markDone(id: number) {
   font-weight: 600;
 }
 
-.sheet-notice {
+.seg-row {
+  display: flex;
+  gap: 16rpx;
+  justify-content: center;
+  margin-bottom: 20rpx;
+}
+
+.seg-chip {
+  padding: 12rpx 36rpx;
+  border-radius: 40rpx;
+  background: #f5f6fa;
+  font-size: 26rpx;
+  color: #4c5566;
+}
+
+.seg-chip.active {
+  background: #edefff;
+  color: #4a5af0;
+  font-weight: 600;
+}
+
+.code-img {
+  width: 480rpx;
+  height: 480rpx;
+  margin: 0 auto 20rpx;
+  border-radius: 20rpx;
+  background: #f5f6fa;
   display: block;
-  font-size: 22rpx;
-  color: #9ca3af;
-  line-height: 1.6;
+}
+
+.code-empty {
+  display: block;
+  text-align: center;
+  padding: 60rpx 0;
+  font-size: 26rpx;
+  color: #8a93a6;
+}
+
+.tip-box {
+  background: rgba(22, 160, 133, 0.08);
+  border-radius: 20rpx;
+  padding: 20rpx 24rpx;
   margin-bottom: 22rpx;
 }
 
+.tip-txt {
+  font-size: 24rpx;
+  color: #8a93a6;
+  line-height: 1.6;
+}
+
+.arrive-text {
+  display: block;
+  font-size: 26rpx;
+  color: #1b2233;
+  line-height: 1.6;
+  margin-bottom: 12rpx;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
 .sheet-btn {
+  flex: 1;
   text-align: center;
   padding: 24rpx 0;
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   font-size: 30rpx;
   font-weight: 600;
 }
 
 .sheet-btn.primary {
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
+  background: #4a5af0;
   color: #fff;
 }
 
@@ -849,32 +1085,5 @@ function markDone(id: number) {
 
 .codes-sheet {
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
-}
-
-.code-imgs {
-  display: flex;
-  gap: 24rpx;
-  justify-content: center;
-  margin-bottom: 18rpx;
-}
-
-.code-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.code-img {
-  width: 260rpx;
-  height: 260rpx;
-  border-radius: 16rpx;
-  background: #f5f6fa;
-  border: 1rpx solid #eef0f5;
-}
-
-.code-name {
-  margin-top: 10rpx;
-  font-size: 22rpx;
-  color: #4c5566;
 }
 </style>
