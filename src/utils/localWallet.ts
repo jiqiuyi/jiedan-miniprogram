@@ -111,13 +111,15 @@ export function loadRecharges(): RechargeRec[] {
 export function addRecharge(p: {
   amount: number
   method: RechargeMethodKey
+  /** 默认 pending；确认到账时直接以 done 入账（对齐 App 手动确认到账语义） */
+  status?: RechargeRec['status']
   note?: string
 }): RechargeRec {
   const rec: RechargeRec = {
     id: Date.now(),
     amount: p.amount,
     method: p.method,
-    status: 'pending',
+    status: p.status || 'pending',
     createdAt: Date.now(),
     note: p.note || ''
   }
@@ -181,6 +183,12 @@ export function loadAccount(): WithdrawAccount | null {
 
 export function saveAccount(acc: WithdrawAccount) {
   storage.setJson(WALLET_ACCOUNT_KEY, acc)
+}
+
+/** 账户是否已填写完整（对齐 App WithdrawAccount.filled：姓名与账号均非空） */
+export function isAccountFilled(acc: WithdrawAccount | null): boolean {
+  if (!acc) return false
+  return !!(acc.name || '').trim() && !!(acc.no || '').trim()
 }
 
 // ---------- 收款码图片路径 ----------

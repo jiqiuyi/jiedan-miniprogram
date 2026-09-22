@@ -33,6 +33,41 @@ export function getPendingInviteCode(): string {
   return typeof v === 'string' ? v : ''
 }
 
+/** 恢复本机暂存的邀请码（登录页进入时调用，等价 App restorePendingInviteCode） */
+export function restorePendingInviteCode(): string {
+  return getPendingInviteCode()
+}
+
+/**
+ * 未登录时读取系统剪贴板、识别邀请码并暂存（注册时自动带上）。
+ * - 已暂存过邀请码时直接返回，不重复读取剪贴板；
+ * - 剪贴板无合法码 / 读取被拒绝时返回空串并静默忽略，注册页仍可手动填写。
+ * 说明：App 在启动时调用（captureClipboardInviteCode），小程序无独立启动钩子，
+ * 改在登录页进入时调用，语义一致（仅未登录、仅本机无暂存时生效）。
+ */
+export function captureClipboardInviteCode(): Promise<string> {
+  const existed = getPendingInviteCode()
+  if (existed) return Promise.resolve(existed)
+  return new Promise<string>((resolve) => {
+    try {
+      uni.getClipboardData({
+        success: (res) => {
+          const code = parseInviteCode(String((res && res.data) || ''))
+          if (!code) {
+            resolve('')
+            return
+          }
+          savePendingInviteCode(code)
+          resolve(code)
+        },
+        fail: () => resolve('')
+      })
+    } catch {
+      resolve('')
+    }
+  })
+}
+
 /** 清除暂存邀请码（注册成功或用户拒绝绑定后调用） */
 export function clearPendingInviteCode() {
   if (!getPendingInviteCode()) return

@@ -11,7 +11,8 @@ import {
   WALLET_WITHDRAW_KEY,
   WALLET_ACCOUNT_KEY,
   PAYCODE_WX_KEY,
-  PAYCODE_ALI_KEY
+  PAYCODE_ALI_KEY,
+  TAGS_KEY
 } from './config'
 
 export const storage = {
@@ -75,11 +76,23 @@ export const storage = {
     uni.removeStorageSync(key)
   },
 
+  /** 客户标签本机缓存（tags + customer_tags；标签为本机语义数据） */
+  getTags<T>(): T | null {
+    return this.getJson<T>(TAGS_KEY)
+  },
+  setTags(val: unknown) {
+    this.setJson(TAGS_KEY, val)
+  },
+  clearTags() {
+    uni.removeStorageSync(TAGS_KEY)
+  },
+
   /** 清空全部登录相关状态（登出用，含钱包账本 / 收款码等本机账号数据） */
   clearAll() {
     this.clearToken()
     this.clearUser()
     this.clearSyncCache()
+    this.clearTags()
     uni.removeStorageSync(WALLET_RECHARGE_KEY)
     uni.removeStorageSync(WALLET_WITHDRAW_KEY)
     uni.removeStorageSync(WALLET_ACCOUNT_KEY)

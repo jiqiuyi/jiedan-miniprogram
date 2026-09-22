@@ -12,6 +12,13 @@ export interface SyncTables {
   projects?: unknown[]
   quotes?: unknown[]
   payments?: unknown[]
+  /** 项目里程碑 / 阶段（对齐 App milestones 表） */
+  milestones?: unknown[]
+  pending_collections?: unknown[]
+  /** 标签池（本地语义为主，服务端表名无关，可回传） */
+  tags?: unknown[]
+  /** 客户-标签关联 */
+  customer_tags?: unknown[]
 }
 
 export interface SyncPullResult {

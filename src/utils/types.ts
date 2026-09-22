@@ -91,8 +91,77 @@ export interface Payment {
   [key: string]: unknown
 }
 
+/**
+ * 项目里程碑 / 阶段（对齐 App milestones 表，v9 新增）
+ * 金额存分；done 存 1/0（App SQLite 整型），展示时按 1 判定已完成。
+ */
+export interface Milestone {
+  id: number
+  project_id?: number
+  name?: string
+  /** 阶段金额，单位：分 */
+  amount?: number
+  /** 1 已完成 / 0 未完成 */
+  done?: number
+  created_at?: number
+  updated_at?: number
+  [key: string]: unknown
+}
+
+/** 待收款记录（报价转待收款 / 项目待收尾款，对齐 App pending_collections 表） */
+export interface PendingCollection {
+  id: number
+  project_id?: number
+  quote_id?: number
+  customer_id?: number
+  title?: string
+  /** 金额，单位：分 */
+  amount?: number
+  due_date?: number
+  /** 0 待收 / 1 已结清 */
+  status?: number
+  created_at?: number
+  settled_at?: number
+  updated_at?: number
+  [key: string]: unknown
+}
+
+/**
+ * 客户标签（对齐 App tags 表 / 第19批 标签系统）
+ * color 存 ARGB 整型（如 0xFFE53935），展示时经 tagColorCss 转 '#RRGGBB'。
+ */
+export interface Tag {
+  id: number
+  name?: string
+  color?: number
+  created_at?: number
+  updated_at?: number
+  [key: string]: unknown
+}
+
+/**
+ * 客户-标签关联（对齐 App customer_tags 表，(customer_id, tag_id) 复合唯一）
+ * 小程序同步行需带 id：约定 id = customer_id * 100000 + tag_id。
+ */
+export interface CustomerTag {
+  id: number
+  customer_id?: number
+  tag_id?: number
+  created_at?: number
+  updated_at?: number
+  [key: string]: unknown
+}
+
 /** 同步表名与行类型映射 */
-export type SyncTableName = 'customers' | 'projects' | 'quotes' | 'payments'
+export type SyncTableName =
+  | 'customers'
+  | 'projects'
+  | 'quotes'
+  | 'payments'
+  | 'milestones'
+  | 'pending_collections'
+  | 'tags'
+  | 'customer_tags'
 
 /** 通用可写行 */
 export type DataRow = Record<string, unknown>

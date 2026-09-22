@@ -22,11 +22,19 @@ export interface FeedbackItem {
   processedAt?: number | null
 }
 
-/** 提交反馈（静默：错误由页面提示） */
+/**
+ * 提交反馈（静默：错误由页面提示）
+ * deviceModel / osVersion / appVersion / buildNumber 为 4 项非敏感设备信息，
+ * 对齐 App DeviceInfoReporter：仅在「反馈信息上报」开关开启时附带，关闭时传空串。
+ */
 export function submitFeedback(data: {
   type: FeedbackTypeKey
   content: string
   contact?: string
+  deviceModel?: string
+  osVersion?: string
+  appVersion?: string
+  buildNumber?: string
 }) {
   return post<{ ok: boolean; feedbackId: number }>('/api/feedback', data, {
     silent: true
