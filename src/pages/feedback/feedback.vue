@@ -1,141 +1,181 @@
 <template>
   <view class="page">
-    <!-- 未登录 -->
-    <view v-if="!user.isLoggedIn" class="card empty-card">
-      <text class="empty-icon">📮</text>
-      <text class="empty-text">登录后即可在线提交反馈，并随时查看处理进度与回复</text>
-      <view class="primary-btn" @tap="goLogin">去登录</view>
+    <!-- 提交表单（对齐 App feedback_page.dart：反馈类型 / 反馈内容 / 联系方式 / 提交） -->
+    <view class="form">
+      <view class="label">反馈类型</view>
+      <view class="chip-row">
+        <view
+          v-for="t in TYPE_OPTIONS"
+          :key="t.value"
+          class="chip"
+          :class="{ active: typeValue === t.value }"
+          @tap="typeValue = t.value"
+        >
+          {{ t.label }}
+        </view>
+      </view>
+
+      <view class="label">反馈内容</view>
+      <textarea
+        v-model="content"
+        class="content-input"
+        :maxlength="500"
+        :placeholder="contentPlaceholder"
+        placeholder-class="ph"
+      />
+      <view class="count-tip">{{ content.length }}/500</view>
+
+      <view class="label">联系方式（选填）</view>
+      <input
+        v-model="contact"
+        class="field-input"
+        placeholder="手机号 / 微信 / 邮箱，方便开发者回复你"
+        placeholder-class="ph"
+        :maxlength="100"
+      />
+
+      <view class="submit-btn" :class="{ disabled: submitting }" @tap="submit">
+        {{ submitting ? '提交中…' : '提交反馈' }}
+      </view>
+      <text class="form-tip">在线提交后开发者实时收到 · 数据仅用于处理你的反馈</text>
     </view>
 
-    <template v-else>
-      <!-- 提交反馈 -->
-      <view class="card form-card">
-        <view class="form-label">反馈类型</view>
-        <view class="chip-row">
-          <view
-            v-for="t in typeOptions"
-            :key="t.value"
-            class="chip"
-            :class="{ active: typeValue === t.value }"
-            @tap="typeValue = t.value"
-          >
-            {{ t.label }}
-          </view>
+    <!-- 我的反馈列表（对齐 App MyFeedbackPage：本地反馈箱 + 服务器作者回复合并） -->
+    <view class="section-head">
+      <text class="section-title">我的反馈</text>
+      <text class="refresh-link" @tap="onSyncTap">同步回复</text>
+    </view>
+    <view v-if="list.length === 0" class="empty-box">
+      <text class="empty-text">还没有提交过反馈，下拉可刷新</text>
+    </view>
+    <view v-else class="fb-list">
+      <view v-for="item in list" :key="item.localId" class="fb-card">
+        <view class="fb-head">
+          <text class="fb-type">{{ typeLabel(item.type) }}</text>
+          <text v-if="!item.synced" class="fb-unsynced">未同步</text>
+          <text class="fb-time">{{ formatDateTime(item.createdAt) }}</text>
         </view>
-
-        <view class="form-label">反馈内容</view>
-        <textarea
-          v-model="content"
-          class="content-input"
-          placeholder="请描述你遇到的问题或建议：在哪个页面、做了什么操作、出现什么现象，越具体越便于我们排查"
-          placeholder-class="ph"
-          :maxlength="500"
-        />
-        <view class="count-tip">{{ content.length }}/500</view>
-
-        <view class="form-label">联系方式（选填）</view>
-        <input
-          v-model="contact"
-          class="field-input"
-          placeholder="手机号 / 微信号，方便我们回复你"
-          placeholder-class="ph"
-          :maxlength="100"
-        />
-
-        <view class="submit-btn" :class="{ disabled: submitting }" @tap="submit">
-          {{ submitting ? '正在提交…' : '提交反馈' }}
-        </view>
-        <text class="form-tip">在线提交后开发者会尽快查看并回复 · 内容仅用于处理你的反馈</text>
-      </view>
-
-      <!-- 我的反馈 -->
-      <view class="section-head">
-        <text class="section-title">我的反馈</text>
-        <text class="refresh-link" @tap="loadMine(true)">刷新</text>
-      </view>
-      <view v-if="mineLoading" class="card loading-card">
-        <text class="loading-text">加载中…</text>
-      </view>
-      <view v-else-if="mineList.length === 0" class="card empty-mini">
-        <text class="empty-text">还没有提交过反馈，提交后这里会实时显示处理进度</text>
-      </view>
-      <view v-else class="fb-list">
-        <view v-for="item in mineList" :key="item.id" class="card fb-card">
-          <view class="fb-head">
-            <text class="fb-type" :class="'t-' + item.type">{{ typeLabel(item.type) }}</text>
-            <text class="fb-status" :class="'s-' + (item.status || 'pending')">{{ statusLabel(item.status) }}</text>
-            <text class="fb-time">{{ formatDateTime(item.createdAt) }}</text>
+        <text class="fb-content">{{ item.content }}</text>
+        <text v-if="item.contact" class="fb-contact">联系：{{ item.contact }}</text>
+        <view v-if="item.reply" class="fb-reply">
+          <view class="fb-reply-head">
+            <text class="fb-reply-label">作者回复</text>
+            <text v-if="item.repliedAt" class="fb-reply-time">{{ formatDateTime(item.repliedAt) }}</text>
           </view>
-          <text class="fb-content">{{ item.content }}</text>
-          <text v-if="item.contact" class="fb-contact">联系：{{ item.contact }}</text>
-          <view v-if="item.reply" class="fb-reply">
-            <view class="fb-reply-head">
-              <text class="fb-reply-label">作者回复</text>
-              <text v-if="item.repliedAt" class="fb-reply-time">{{ formatDateTime(item.repliedAt) }}</text>
-            </view>
-            <text class="fb-reply-text">{{ item.reply }}</text>
-          </view>
+          <text class="fb-reply-text">{{ item.reply }}</text>
         </view>
       </view>
-    </template>
+    </view>
+    <view v-if="syncError" class="offline-tip">当前为本地数据（离线），下拉可重新同步作者回复</view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
+import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { formatDateTime } from '@/utils/format'
+import { storage } from '@/utils/storage'
+import {
+  CLIENT_BUILD,
+  CLIENT_VERSION,
+  FEEDBACK_REPORT_KEY,
+  LOCAL_FEEDBACK_KEY
+} from '@/utils/config'
 import {
   submitFeedback,
   fetchMyFeedbacks,
-  type FeedbackItem,
   type FeedbackTypeKey
 } from '@/api/feedback'
 
-const user = useUserStore()
+/** 本机反馈箱记录（对齐 App feedbacks 表语义：本地留档 + 服务器 id / 作者回复合并） */
+interface LocalFeedback {
+  localId: string
+  serverId: number | null
+  type: FeedbackTypeKey
+  content: string
+  contact: string
+  createdAt: number
+  reply: string
+  repliedAt: number | null
+  synced: boolean
+}
 
-const typeOptions: { value: FeedbackTypeKey; label: string }[] = [
+const TYPE_OPTIONS: { value: FeedbackTypeKey; label: string }[] = [
   { value: 'bug', label: 'Bug 反馈' },
   { value: 'suggestion', label: '更新建议' },
   { value: 'other', label: '其他' }
 ]
 
+const user = useUserStore()
 const typeValue = ref<FeedbackTypeKey>('suggestion')
 const content = ref('')
 const contact = ref('')
 const submitting = ref(false)
+const list = ref<LocalFeedback[]>([])
+const syncError = ref('')
 
-const mineList = ref<FeedbackItem[]>([])
-const mineLoading = ref(false)
-let mineLoaded = false
+const contentPlaceholder = computed(() =>
+  typeValue.value === 'bug'
+    ? '请描述遇到的问题：在哪个页面、做了什么操作、出现什么现象'
+    : '请描述你的建议：希望新增什么功能、如何改进体验'
+)
 
-onShow(() => {
-  if (user.isLoggedIn && !mineLoaded) {
-    loadMine(false)
-    mineLoaded = true
+// ---------------- 本机反馈箱 ----------------
+
+function loadLocal(): LocalFeedback[] {
+  const rows = storage.getJson<LocalFeedback[]>(LOCAL_FEEDBACK_KEY) || []
+  // 按提交时间倒序（对齐 App getFeedbacks 的 created_at DESC）
+  return rows.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+}
+
+function saveLocal(rows: LocalFeedback[]) {
+  storage.setJson(LOCAL_FEEDBACK_KEY, rows)
+}
+
+function newLocalId(): string {
+  return `fb_${Date.now()}_${Math.floor(Math.random() * 100000)}`
+}
+
+function addLocal(row: Omit<LocalFeedback, 'localId'>) {
+  const rows = storage.getJson<LocalFeedback[]>(LOCAL_FEEDBACK_KEY) || []
+  rows.push({ ...row, localId: newLocalId() })
+  saveLocal(rows)
+}
+
+function typeLabel(t: FeedbackTypeKey): string {
+  const hit = TYPE_OPTIONS.find((o) => o.value === t)
+  return hit ? hit.label : '其他'
+}
+
+// ---------------- 提交 ----------------
+
+/** 4 项非敏感设备信息（对齐 App DeviceInfoReporter：开关关闭或读取失败时为空串） */
+function collectDevicePayload() {
+  const empty = {
+    deviceModel: '',
+    osVersion: '',
+    appVersion: '',
+    buildNumber: ''
   }
-})
+  const saved = storage.getJson<boolean>(FEEDBACK_REPORT_KEY)
+  if (saved === false) return empty
+  try {
+    const info = uni.getSystemInfoSync()
+    const model = `${info.brand || ''} ${info.model || ''}`.trim()
+    return {
+      deviceModel: model,
+      osVersion: info.system || '',
+      appVersion: CLIENT_VERSION,
+      buildNumber: CLIENT_BUILD
+    }
+  } catch {
+    return empty
+  }
+}
 
 function goLogin() {
   uni.navigateTo({ url: '/pages/login/login' })
-}
-
-function typeLabel(t: unknown): string {
-  const s = String(t ?? '')
-  if (s === 'bug') return 'Bug 反馈'
-  if (s === 'other') return '其他'
-  return '更新建议'
-}
-
-function statusLabel(s: unknown): string {
-  const m: Record<string, string> = {
-    pending: '待处理',
-    processing: '处理中',
-    resolved: '已解决',
-    ignored: '已忽略'
-  }
-  return m[String(s ?? 'pending')] || '待处理'
 }
 
 async function submit() {
@@ -145,118 +185,153 @@ async function submit() {
     uni.showToast({ title: '请先填写反馈内容', icon: 'none' })
     return
   }
+  if (!user.isLoggedIn) {
+    uni.showModal({
+      title: '需要先登录',
+      content: '在线反馈需要登录账号后才能提交（便于我们跟踪与回复）。是否前往登录？',
+      cancelText: '取消',
+      confirmText: '去登录',
+      success: (res) => {
+        if (res.confirm) goLogin()
+      }
+    })
+    return
+  }
+
   submitting.value = true
+  let feedbackId = 0
+  let errMsg = ''
   try {
     const res = await submitFeedback({
       type: typeValue.value,
       content: c,
-      contact: contact.value.trim()
+      contact: contact.value.trim(),
+      ...collectDevicePayload()
     })
-    if (!res.ok || !res.data) {
-      uni.showModal({
-        title: '提交失败',
-        content: res.error || '网络异常，请稍后重试',
-        showCancel: false,
-        confirmText: '知道了'
-      })
-      return
+    if (res.ok && res.data) {
+      feedbackId = Number(res.data.feedbackId || 0)
+    } else {
+      errMsg = res.error || '网络异常'
     }
-    const id = res.data.feedbackId
-    content.value = ''
-    contact.value = ''
-    await loadMine(false)
-    uni.showModal({
-      title: '反馈已收到',
-      content: `你的反馈（#${id}）已成功提交，我们会尽快查看并回复。`,
-      showCancel: false,
-      confirmText: '知道了'
-    })
   } catch {
+    errMsg = '网络异常'
+  }
+
+  // 无论在线提交成功与否，都先在本机反馈箱留档：
+  // - 成功：记录服务器 id 以便后续合并作者回复；
+  // - 失败：标记为「未同步」，列表提示，下拉刷新可重试同步。
+  const ok = !errMsg
+  addLocal({
+    serverId: ok && feedbackId ? feedbackId : null,
+    type: typeValue.value,
+    content: c,
+    contact: contact.value.trim(),
+    createdAt: Date.now(),
+    reply: '',
+    repliedAt: null,
+    synced: ok
+  })
+  list.value = loadLocal()
+  submitting.value = false
+
+  if (!ok) {
     uni.showModal({
       title: '提交失败',
-      content: '网络异常，请稍后重试',
+      content: `提交失败，已暂存到本地：${errMsg} 下拉「我的反馈」可重试同步`,
       showCancel: false,
       confirmText: '知道了'
     })
-  } finally {
-    submitting.value = false
+    return
   }
+
+  content.value = ''
+  contact.value = ''
+  uni.showModal({
+    title: '反馈已收到',
+    content: `你的反馈（#${feedbackId}）已实时提交到服务器，我们已收到，会尽快查看并回复。`,
+    showCancel: false,
+    confirmText: '完成'
+  })
 }
 
-async function loadMine(manual: boolean) {
-  if (!user.isLoggedIn) return
-  mineLoading.value = true
+// ---------------- 服务器合并 ----------------
+
+async function syncFromServer() {
+  if (!user.isLoggedIn) {
+    syncError.value = '云同步回复需登录后使用'
+    return
+  }
+  let err = ''
   try {
     const res = await fetchMyFeedbacks()
     if (res.ok && res.data) {
-      mineList.value = res.data.feedbacks || []
-    } else if (manual) {
-      uni.showToast({ title: res.error || '刷新失败', icon: 'none' })
+      const rows = storage.getJson<LocalFeedback[]>(LOCAL_FEEDBACK_KEY) || []
+      const items = res.data.feedbacks || []
+      items.forEach((it) => {
+        const serverId = Number(it.id)
+        const typeName = String(it.type || 'suggestion')
+        const typeHit = TYPE_OPTIONS.find((o) => o.value === typeName)
+        const hit = rows.find((r) => r.serverId === serverId)
+        const patch = {
+          type: (typeHit ? typeHit.value : 'other') as FeedbackTypeKey,
+          content: String(it.content || ''),
+          contact: String(it.contact || ''),
+          createdAt: Number(it.createdAt || Date.now()),
+          reply: String(it.reply || ''),
+          repliedAt: it.repliedAt ? Number(it.repliedAt) : null,
+          synced: true
+        }
+        if (hit) {
+          Object.assign(hit, patch)
+        } else {
+          rows.push({ localId: newLocalId(), serverId, ...patch })
+        }
+      })
+      saveLocal(rows)
+    } else {
+      err = res.error || '同步失败'
     }
   } catch {
-    if (manual) uni.showToast({ title: '刷新失败，请稍后重试', icon: 'none' })
-  } finally {
-    mineLoading.value = false
+    err = '网络异常'
   }
+  list.value = loadLocal()
+  syncError.value = err
 }
+
+function onSyncTap() {
+  if (!user.isLoggedIn) {
+    uni.showToast({ title: '云同步回复需登录后使用', icon: 'none' })
+    return
+  }
+  void syncFromServer()
+}
+
+onShow(() => {
+  list.value = loadLocal()
+  if (user.isLoggedIn) void syncFromServer()
+})
+
+onPullDownRefresh(async () => {
+  await syncFromServer()
+  uni.stopPullDownRefresh()
+})
 </script>
 
 <style lang="scss" scoped>
+/* 版式对齐 App 正本：表单字段 14pt → 28rpx，提示文案 12pt → 24rpx */
 .page {
-  padding: 24rpx;
+  padding: 32rpx;
   padding-bottom: 60rpx;
   background: #f6f7fb;
   min-height: 100vh;
   box-sizing: border-box;
 }
 
-.card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 24rpx;
-  box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
-}
-
-.empty-card {
-  margin-top: 80rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 60rpx 40rpx;
-}
-
-.empty-icon {
-  font-size: 88rpx;
-}
-
-.empty-text {
-  margin-top: 24rpx;
-  font-size: 26rpx;
-  color: #8a93a6;
-  text-align: center;
-  line-height: 1.6;
-}
-
-.primary-btn {
-  margin-top: 32rpx;
-  padding: 20rpx 72rpx;
-  border-radius: 44rpx;
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
-  color: #fff;
-  font-size: 30rpx;
-  font-weight: 600;
-}
-
-.form-card {
-  display: flex;
-  flex-direction: column;
-}
-
-.form-label {
-  font-size: 26rpx;
+.label {
+  font-size: 28rpx;
   font-weight: 600;
   color: #1f2430;
-  margin: 18rpx 0 12rpx;
+  margin: 30rpx 0 16rpx;
 }
 
 .chip-row {
@@ -281,10 +356,11 @@ async function loadMine(manual: boolean) {
 
 .content-input {
   width: 100%;
-  min-height: 220rpx;
+  min-height: 240rpx;
   box-sizing: border-box;
-  background: #f7f8fb;
-  border-radius: 16rpx;
+  background: #fff;
+  border: 1rpx solid #e3e6ef;
+  border-radius: 12rpx;
   padding: 20rpx;
   font-size: 28rpx;
   color: #1f2430;
@@ -295,8 +371,9 @@ async function loadMine(manual: boolean) {
   width: 100%;
   box-sizing: border-box;
   height: 84rpx;
-  background: #f7f8fb;
-  border-radius: 16rpx;
+  background: #fff;
+  border: 1rpx solid #e3e6ef;
+  border-radius: 12rpx;
   padding: 0 20rpx;
   font-size: 28rpx;
   color: #1f2430;
@@ -307,14 +384,14 @@ async function loadMine(manual: boolean) {
 }
 
 .count-tip {
-  align-self: flex-end;
-  margin-top: 6rpx;
+  margin-top: 8rpx;
+  text-align: right;
   font-size: 22rpx;
   color: #b6bcc9;
 }
 
 .submit-btn {
-  margin-top: 26rpx;
+  margin-top: 40rpx;
   text-align: center;
   padding: 26rpx 0;
   border-radius: 20rpx;
@@ -329,43 +406,44 @@ async function loadMine(manual: boolean) {
 }
 
 .form-tip {
-  margin-top: 16rpx;
-  font-size: 22rpx;
-  color: #8a93a6;
+  display: block;
+  margin-top: 24rpx;
   text-align: center;
+  font-size: 24rpx;
+  color: #8a93a6;
 }
 
 .section-head {
-  margin: 34rpx 8rpx 14rpx;
+  margin: 44rpx 0 16rpx;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .section-title {
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 700;
   color: #1f2430;
 }
 
 .refresh-link {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #4a5af0;
-  padding: 8rpx 12rpx;
+  padding: 8rpx 0 8rpx 20rpx;
 }
 
-.loading-card {
-  padding: 40rpx;
+.empty-box {
+  padding: 70rpx 30rpx;
   text-align: center;
+  background: #fff;
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
-.loading-text {
+.empty-text {
   font-size: 26rpx;
   color: #8a93a6;
-}
-
-.empty-mini {
-  padding: 60rpx 30rpx;
+  line-height: 1.6;
 }
 
 .fb-list {
@@ -375,51 +453,34 @@ async function loadMine(manual: boolean) {
 }
 
 .fb-card {
-  display: flex;
-  flex-direction: column;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 28rpx;
+  box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
 .fb-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  row-gap: 8rpx;
 }
 
 .fb-type {
   padding: 4rpx 16rpx;
   border-radius: 8rpx;
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 600;
   color: #4a5af0;
   background: #edefff;
 }
 
-.fb-status {
-  margin-left: 12rpx;
-  padding: 4rpx 14rpx;
+.fb-unsynced {
+  margin-left: 16rpx;
+  padding: 4rpx 16rpx;
   border-radius: 8rpx;
-  font-size: 22rpx;
-}
-
-.fb-status.s-pending {
-  color: #8a6d1a;
-  background: #fdf6e3;
-}
-
-.fb-status.s-processing {
+  font-size: 24rpx;
+  font-weight: 600;
   color: #b25a00;
   background: #fff1e0;
-}
-
-.fb-status.s-resolved {
-  color: #0e8a3e;
-  background: #e4f7ec;
-}
-
-.fb-status.s-ignored {
-  color: #8a93a6;
-  background: #f0f1f5;
 }
 
 .fb-time {
@@ -429,25 +490,27 @@ async function loadMine(manual: boolean) {
 }
 
 .fb-content {
+  display: block;
   margin-top: 16rpx;
   font-size: 28rpx;
-  line-height: 1.6;
+  line-height: 1.5;
   color: #1f2430;
   word-break: break-all;
 }
 
 .fb-contact {
-  margin-top: 8rpx;
+  display: block;
+  margin-top: 12rpx;
   font-size: 24rpx;
   color: #8a93a6;
 }
 
 .fb-reply {
-  margin-top: 16rpx;
-  padding: 18rpx;
-  border-radius: 12rpx;
-  background: #e4f7ec;
-  border: 1rpx solid rgba(14, 138, 62, 0.25);
+  margin-top: 20rpx;
+  padding: 20rpx;
+  border-radius: 8rpx;
+  background: rgba(14, 138, 62, 0.09);
+  border: 1rpx solid rgba(14, 138, 62, 0.35);
 }
 
 .fb-reply-head {
@@ -462,16 +525,23 @@ async function loadMine(manual: boolean) {
 }
 
 .fb-reply-time {
-  margin-left: 12rpx;
+  margin-left: 16rpx;
   font-size: 22rpx;
-  color: #7fa891;
+  color: #8a93a6;
 }
 
 .fb-reply-text {
   display: block;
-  margin-top: 8rpx;
+  margin-top: 12rpx;
   font-size: 26rpx;
-  line-height: 1.6;
+  line-height: 1.5;
   color: #1f2430;
+}
+
+.offline-tip {
+  margin-top: 20rpx;
+  padding: 0 8rpx;
+  font-size: 24rpx;
+  color: #b25a00;
 }
 </style>

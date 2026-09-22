@@ -1,189 +1,442 @@
 <template>
   <view class="page">
-    <!-- 未登录 -->
-    <view v-if="!user.isLoggedIn" class="card empty-card">
-      <text class="empty-icon">📤</text>
-      <text class="empty-text">登录后即可查看并导出本人账号下的全部数据</text>
-      <view class="primary-btn" @tap="goLogin">去登录</view>
+    <!-- 数据安全说明（对齐 App data_management_page.dart 首卡：盾牌图标 + 两段说明） -->
+    <view class="card">
+      <view class="sec-head">
+        <text class="sec-icon">🛡️</text>
+        <text class="sec-title">数据安全说明</text>
+      </view>
+      <text class="sec-body">
+        本软件不会将数据保存在服务器，所有项目、客户、收款等数据都只保存在您自己的手机里。
+      </text>
+      <text class="sec-sub">
+        为防止卸载软件清空数据，请在卸载前先导出备份，并将备份文件保存到网盘、文件管理器或微信等安全位置，重装后可导入恢复。
+      </text>
     </view>
 
-    <template v-else>
-      <!-- 我的数据导出 -->
-      <view class="card block-card">
-        <view class="block-head">
-          <text class="block-title">我的数据</text>
-          <text class="block-tag">本人账号</text>
-        </view>
-        <text class="block-desc">
-          从云端拉取当前账号下的客户、项目、报价、收款、里程碑、合同等全部业务数据，以文本方式展示，可一键复制保存到本地或发给文件传输助手。
-        </text>
-        <view class="primary-btn wide" :class="{ disabled: exportingMy }" @tap="loadMy">
-          {{ exportingMy ? '拉取中…' : myData ? '重新拉取' : '拉取我的数据' }}
-        </view>
-
-        <view v-if="myData" class="json-area">
-          <view class="json-head">
-            <text class="json-title">数据预览</text>
-            <text v-if="myTruncated" class="json-truncate">内容较长，仅预览前 5000 字符</text>
-            <text class="json-meta">{{ myRows }} 行数据</text>
-          </view>
-          <scroll-view scroll-y class="json-scroll">
-            <text class="json-text">{{ myPreview }}</text>
-          </scroll-view>
-          <view class="btn-row">
-            <view class="ghost-btn" hover-class="btn-hover" @tap="copyText(myData)">
-              复制全部
-            </view>
-          </view>
-        </view>
-        <text v-if="myError" class="err-text">{{ myError }}</text>
+    <!-- 导出备份 -->
+    <view class="card row" :class="{ disabled: busy }" @tap="onExport">
+      <text class="row-icon">📤</text>
+      <view class="row-main">
+        <text class="row-title">导出备份</text>
+        <text class="row-sub">将全部数据打包成文件，可分享保存到网盘/微信</text>
       </view>
+      <text class="row-arrow">{{ busy ? '…' : '›' }}</text>
+    </view>
 
-      <!-- 全量备份（管理员） -->
-      <view class="card block-card">
-        <view class="block-head">
-          <text class="block-title">全量备份</text>
-          <text class="block-tag warn">仅限管理员</text>
-        </view>
-        <text class="block-desc">
-          管理员可拉取全体用户的经营快照，用于归档备份。备份内容含其他用户的数据，请妥善保管，切勿外泄。
-        </text>
-        <view class="primary-btn wide ghost-style" :class="{ disabled: exportingAdmin }" @tap="loadAdmin">
-          {{ exportingAdmin ? '拉取中…' : adminData ? '重新拉取' : '拉取全量备份' }}
-        </view>
-        <view v-if="adminData" class="json-area">
-          <view class="json-head">
-            <text class="json-title">备份预览</text>
-            <text class="json-meta">{{ adminPreview.length }} 字符</text>
-          </view>
-          <scroll-view scroll-y class="json-scroll short">
-            <text class="json-text">{{ adminPreview }}</text>
-          </scroll-view>
-          <view class="btn-row">
-            <view class="ghost-btn" hover-class="btn-hover" @tap="copyText(adminData)">复制备份</view>
-          </view>
-        </view>
-        <text v-else-if="adminError" class="err-text">{{ adminError }}</text>
-        <text v-else class="block-tip">普通账号访问将提示无权限，不影响上方「我的数据」导出。</text>
+    <!-- 导入恢复 -->
+    <view class="card row" :class="{ disabled: busy }" @tap="onImport">
+      <text class="row-icon">📥</text>
+      <view class="row-main">
+        <text class="row-title">导入恢复</text>
+        <text class="row-sub">从备份文件恢复数据（会覆盖当前数据）</text>
       </view>
+      <text class="row-arrow">›</text>
+    </view>
 
-      <text class="foot-tip">导出数据仅用于备份与迁移参考，请妥善保管；小程序内不会将你的数据用于任何其他用途。</text>
-    </template>
+    <!-- 数据库自检（对齐 App v1.23.0；小程序无本地数据库，等价检查本机数据缓存，全程只读） -->
+    <view class="card row" :class="{ disabled: busy }" @tap="onHealthCheck">
+      <text class="row-icon">🩺</text>
+      <view class="row-main">
+        <text class="row-title">数据库自检</text>
+        <text class="row-sub">检查表结构完整性与数据可恢复性</text>
+      </view>
+      <text class="row-arrow">›</text>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+/**
+ * 数据管理页：导出备份 / 导入恢复 / 数据库自检。
+ * 对齐 App 正本 data_management_page.dart。
+ * 等价处理说明：小程序无 SQLite 本地库、无系统文件选择器与分享面板，
+ * 故备份以「本机数据缓存」为对象，导出用 wx.env.USER_DATA_PATH 落盘 + shareFileMessage 分享，
+ * 导入用 chooseMessageFile 从聊天记录选 .json（等价 file_picker）。
+ */
+import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { useDataStore } from '@/store/data'
 import { useUserStore } from '@/store/user'
-import { fetchMySyncData, fetchExportAll } from '@/api/export'
+import { storage } from '@/utils/storage'
+
+/** 备份文件标识（与 App BackupService 的 appId 语义一致，用于导入校验） */
+const BACKUP_APP_ID = 'jiedan_guanjia'
+const BACKUP_FORMAT_VERSION = 1
 
 type Row = Record<string, unknown>
 
-const user = useUserStore()
+/** 备份表中文名（对齐 App describeBackup 的汇总口径，仅保留小程序侧存在的表） */
+const TABLE_LABELS: { key: string; label: string }[] = [
+  { key: 'customers', label: '客户' },
+  { key: 'projects', label: '项目' },
+  { key: 'quotes', label: '报价' },
+  { key: 'payments', label: '收款' },
+  { key: 'milestones', label: '里程碑' },
+  { key: 'pending_collections', label: '待收款' },
+  { key: 'tags', label: '标签' },
+  { key: 'customer_tags', label: '客户标签关联' }
+]
 
-const exportingMy = ref(false)
-const exportingAdmin = ref(false)
-const myData = ref('')
-const myError = ref('')
-const adminData = ref('')
-const adminError = ref('')
+/** 小程序运行时未在 uni 类型声明中暴露的文件 / 分享能力（JSON 读写、聊天文件、文件分享） */
+interface WxFileManager {
+  writeFileSync: (filePath: string, data: string, encoding?: string) => void
+  readFileSync: (filePath: string, encoding?: string) => string | ArrayBuffer
+}
+interface WxTempFile {
+  path: string
+  name?: string
+}
+interface WxLike {
+  env?: { USER_DATA_PATH?: string }
+  getFileSystemManager?: () => WxFileManager
+  chooseMessageFile?: (opts: {
+    count?: number
+    type?: string
+    extension?: string[]
+    success?: (res: { tempFiles?: WxTempFile[] }) => void
+    fail?: () => void
+  }) => void
+  shareFileMessage?: (opts: {
+    filePath: string
+    fileName?: string
+    success?: () => void
+    fail?: () => void
+  }) => void
+}
+
+function getWx(): WxLike | undefined {
+  return (globalThis as unknown as { wx?: WxLike }).wx
+}
+
+function field(row: unknown, key: string): unknown {
+  return (row as Row | null)?.[key]
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** 自检时间格式对齐 App _fmtTime：yyyy-MM-dd HH:mm */
+function fmtNow(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+function stamp(): string {
+  const d = new Date()
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
+}
+
+const user = useUserStore()
+const busy = ref(false)
 
 onShow(() => {
-  if (!user.isLoggedIn) return
-  user.fetchMeData()
+  // 已登录：先取云端最新数据作为备份来源；未登录：用本机缓存（离线也能导出/自检）
+  if (user.isLoggedIn) void useDataStore().refresh()
+  else useDataStore().loadCache()
 })
 
-function goLogin() {
-  uni.navigateTo({ url: '/pages/login/login' })
+// ---------------- 导出 ----------------
+
+function collectTables(): Record<string, unknown[]> {
+  const d = useDataStore()
+  return {
+    customers: d.customers as unknown[],
+    projects: d.projects as unknown[],
+    quotes: d.quotes as unknown[],
+    payments: d.payments as unknown[],
+    milestones: d.milestones as unknown[],
+    pending_collections: d.pendingCollections as unknown[],
+    tags: d.tags as unknown[],
+    customer_tags: d.customerTags as unknown[]
+  }
 }
 
-function countRows(tables: unknown): number {
-  if (!tables || typeof tables !== 'object') return 0
-  let n = 0
-  Object.values(tables as Row).forEach((v) => {
-    if (Array.isArray(v)) n += v.length
+function countRows(tables: Record<string, unknown[]>): number {
+  return Object.values(tables).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)
+}
+
+/** 写入本机用户目录（对齐 App 导出到手机文件；失败返回空串） */
+function writeBackupFile(fileName: string, text: string): string {
+  const wxApi = getWx()
+  const base = wxApi?.env?.USER_DATA_PATH
+  if (!base || !wxApi?.getFileSystemManager) return ''
+  try {
+    const filePath = `${base}/${fileName}`
+    wxApi.getFileSystemManager().writeFileSync(filePath, text, 'utf8')
+    return filePath
+  } catch {
+    return ''
+  }
+}
+
+async function onExport() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    if (user.isLoggedIn) await useDataStore().refresh()
+    const tables = collectTables()
+    if (countRows(tables) === 0) {
+      uni.showModal({
+        title: '暂无可导出数据',
+        content: '当前没有客户、项目、收款等数据，先在应用里录入后再导出备份。',
+        showCancel: false,
+        confirmText: '好的'
+      })
+      return
+    }
+    const text = JSON.stringify(
+      {
+        app: BACKUP_APP_ID,
+        format_version: BACKUP_FORMAT_VERSION,
+        exported_at: new Date().toISOString(),
+        tables
+      },
+      null,
+      2
+    )
+    const fileName = `jiedan_backup_${stamp()}.json`
+    const filePath = writeBackupFile(fileName, text)
+    if (!filePath) {
+      // 环境不支持写文件（如 H5 预览）：退化为复制备份内容，保证数据可带走
+      uni.setClipboardData({
+        data: text,
+        success: () => {
+          uni.showModal({
+            title: '已复制备份内容',
+            content: '当前环境不支持生成备份文件，备份内容已复制到剪贴板，可粘贴进文件后保存。',
+            showCancel: false,
+            confirmText: '好的'
+          })
+        }
+      })
+      return
+    }
+    const wxApi = getWx()
+    if (!wxApi?.shareFileMessage) {
+      uni.showModal({
+        title: '备份文件已生成',
+        content: `备份文件已生成（${filePath}）。当前环境不支持直接分享，可在微信开发者工具中查看该文件。`,
+        showCancel: false,
+        confirmText: '好的'
+      })
+      return
+    }
+    // 对齐 App：先提示「备份文件已生成（路径），正在弹出分享」，再拉起分享
+    uni.showModal({
+      title: '备份文件已生成',
+      content: `备份文件已生成（${filePath}），正在弹出分享`,
+      showCancel: false,
+      confirmText: '好的',
+      success: () => {
+        wxApi.shareFileMessage?.({
+          filePath,
+          fileName,
+          success: () => uni.showToast({ title: '备份文件已发送', icon: 'success' }),
+          fail: () => uni.showToast({ title: '已取消分享', icon: 'none' })
+        })
+      }
+    })
+  } finally {
+    busy.value = false
+  }
+}
+
+// ---------------- 导入 ----------------
+
+function readFileText(path: string): string {
+  const wxApi = getWx()
+  if (!wxApi?.getFileSystemManager) return ''
+  try {
+    const res = wxApi.getFileSystemManager().readFileSync(path, 'utf8')
+    return typeof res === 'string' ? res : ''
+  } catch {
+    return ''
+  }
+}
+
+function parseBackup(text: string): Record<string, unknown[]> | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const obj = parsed as { app?: unknown; tables?: unknown }
+  if (obj.app !== BACKUP_APP_ID) return null
+  if (!obj.tables || typeof obj.tables !== 'object' || Array.isArray(obj.tables)) return null
+  return obj.tables as Record<string, unknown[]>
+}
+
+function describeTables(tables: Record<string, unknown[]>): string {
+  const parts: string[] = []
+  TABLE_LABELS.forEach(({ key, label }) => {
+    const arr = tables[key]
+    if (Array.isArray(arr) && arr.length) parts.push(`${label} ${arr.length} 条`)
   })
-  return n
+  return parts.length ? `恢复完成：${parts.join('、')}` : '恢复完成：备份文件中没有可恢复的业务数据'
 }
 
-async function loadMy() {
-  if (exportingMy.value) return
-  exportingMy.value = true
-  myError.value = ''
-  try {
-    const res = await fetchMySyncData()
-    if (!res.ok || !res.data) {
-      myError.value = res.error || '拉取失败，请稍后重试'
-      return
-    }
-    const d = res.data
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      uid: d.uid,
-      serverTs: d.serverTs,
-      tables: d.tables || {}
-    }
-    myRows.value = countRows(d.tables)
-    myData.value = JSON.stringify(payload, null, 2)
-  } catch {
-    myError.value = '网络异常，请稍后重试'
-  } finally {
-    exportingMy.value = false
+/** 导入落地：写入本机缓存并覆盖内存数据（对齐 App importBackup 清表后写入） */
+function applyImport(tables: Record<string, unknown[]>) {
+  const data = useDataStore()
+  storage.setSyncCache(tables)
+  data.applyTables(tables as Record<string, unknown>, 0)
+  // 标签为本机独立缓存，随导入一并落盘
+  if (Array.isArray(tables.tags) || Array.isArray(tables.customer_tags)) {
+    storage.setTags({ tags: data.tags, customerTags: data.customerTags })
   }
-}
-
-async function loadAdmin() {
-  if (exportingAdmin.value) return
-  exportingAdmin.value = true
-  adminError.value = ''
-  try {
-    const res = await fetchExportAll()
-    if (!res.ok || !res.data) {
-      adminError.value = res.error || '拉取失败'
-      return
+  // 防篡改加固（对齐 App 导入后强制清 token / 会话，VIP 以云端 me() 为准）
+  user.token = ''
+  user.userInfo = null
+  storage.clearToken()
+  storage.clearUser()
+  uni.showModal({
+    title: '导入成功',
+    content: `${describeTables(tables)}\n\n安全提示：为保护账号权益，导入后已退出登录，VIP 状态将以云端账号为准，请重新登录。`,
+    showCancel: false,
+    confirmText: '好的',
+    success: () => {
+      uni.reLaunch({ url: '/pages/login/login' })
     }
-    adminData.value = JSON.stringify(res.data, null, 2)
-  } catch {
-    adminError.value = '网络异常，请稍后重试'
-  } finally {
-    exportingAdmin.value = false
-  }
+  })
 }
 
-const myRows = ref(0)
-
-const myPreview = computed(() => {
-  if (!myData.value) return ''
-  return myData.value.slice(0, 5000)
-})
-
-const myTruncated = computed(() => myData.value.length > 5000)
-
-const adminPreview = computed(() => {
-  if (!adminData.value) return ''
-  const s = adminData.value
-  return s.length > 20000 ? `${s.slice(0, 20000)}\n…（已截断，请点击复制获取完整备份）` : s
-})
-
-function copyText(text: string) {
-  if (!text) {
-    uni.showToast({ title: '暂无可复制内容', icon: 'none' })
+function onImport() {
+  if (busy.value) return
+  const wxApi = getWx()
+  if (!wxApi?.chooseMessageFile) {
+    uni.showModal({
+      title: '当前环境不支持选择文件',
+      content: '导入需在微信小程序内使用：从聊天记录中选择本应用导出的 .json 备份文件。',
+      showCancel: false,
+      confirmText: '好的'
+    })
     return
   }
-  const max = 400000
-  const target = text.length > max ? text.slice(0, max) : text
-  uni.setClipboardData({
-    data: target,
-    success: () => {
-      uni.showToast({
-        title: text.length > max ? `内容过长，已复制前 ${max} 字符` : '已复制',
-        icon: 'none'
+  wxApi.chooseMessageFile({
+    count: 1,
+    type: 'file',
+    extension: ['json'],
+    success: (res) => {
+      const file = (res.tempFiles || [])[0]
+      if (!file) return
+      const name = file.name || file.path || ''
+      if (!/\.json$/i.test(name)) {
+        uni.showModal({
+          title: '无法读取所选文件',
+          content: '只能选择 .json 格式的备份文件，请重新选择。',
+          showCancel: false,
+          confirmText: '好的'
+        })
+        return
+      }
+      const text = readFileText(file.path)
+      if (!text) {
+        uni.showModal({
+          title: '无法读取所选文件',
+          content: '无法读取所选文件，请确认它是本应用导出的 .json 备份文件。',
+          showCancel: false,
+          confirmText: '好的'
+        })
+        return
+      }
+      const tables = parseBackup(text)
+      if (!tables) {
+        uni.showModal({
+          title: '无法读取所选文件',
+          content: '所选文件不是有效的接单管家备份文件，请确认来源后重试。',
+          showCancel: false,
+          confirmText: '好的'
+        })
+        return
+      }
+      uni.showModal({
+        title: '确认导入恢复？',
+        content:
+          '导入会清空当前手机上的客户、项目、收款等全部数据，并用备份文件内容覆盖。建议先导出当前数据再导入。',
+        cancelText: '取消',
+        confirmText: '确认导入',
+        success: (r) => {
+          if (!r.confirm) return
+          busy.value = true
+          try {
+            applyImport(tables)
+          } catch (e) {
+            uni.showToast({ title: `导入失败：${String(e)}`, icon: 'none' })
+          } finally {
+            busy.value = false
+          }
+        }
       })
     },
     fail: () => {
-      uni.showToast({ title: '复制失败，请重试', icon: 'none' })
+      // 用户取消选择，不打扰
     }
+  })
+}
+
+// ---------------- 数据库自检（等价：本机数据缓存只读体检） ----------------
+
+interface HealthReport {
+  integrityIssues: string[]
+  dangling: number
+  totalRows: number
+}
+
+function runHealthCheck(): HealthReport {
+  const tables = collectTables()
+  const issues: string[] = []
+
+  const idSet = (rows: unknown[]): Set<string> =>
+    new Set(rows.map((r) => String(field(r, 'id') ?? '')))
+
+  TABLE_LABELS.forEach(({ key, label }) => {
+    const arr = tables[key]
+    if (!Array.isArray(arr)) return
+    const bad = arr.filter((r) => {
+      const id = Number(field(r, 'id'))
+      return !(Number.isFinite(id) && id > 0)
+    }).length
+    if (bad > 0) issues.push(`${label}：${bad} 行缺少有效主键`)
+  })
+
+  const customerIds = idSet(tables.customers || [])
+  const projectIds = idSet(tables.projects || [])
+  const tagIds = idSet(tables.tags || [])
+  let dangling = 0
+  dangling += (tables.projects || []).filter((r) => !customerIds.has(String(field(r, 'customer_id') ?? ''))).length
+  dangling += (tables.payments || []).filter((r) => !projectIds.has(String(field(r, 'project_id') ?? ''))).length
+  dangling += (tables.milestones || []).filter((r) => !projectIds.has(String(field(r, 'project_id') ?? ''))).length
+  dangling += (tables.customer_tags || []).filter(
+    (r) => !customerIds.has(String(field(r, 'customer_id') ?? '')) || !tagIds.has(String(field(r, 'tag_id') ?? ''))
+  ).length
+
+  return { integrityIssues: issues, dangling, totalRows: countRows(tables) }
+}
+
+function onHealthCheck() {
+  if (busy.value) return
+  const report = runHealthCheck()
+  const healthy = report.integrityIssues.length === 0 && report.dangling === 0
+  const lines = [
+    `检查时间：${fmtNow()}`,
+    `缓存完整性：${report.integrityIssues.length === 0 ? '正常' : `异常：${report.integrityIssues.join('；')}`}`,
+    `引用完整性：${report.dangling === 0 ? '正常' : `发现 ${report.dangling} 处问题`}`,
+    `数据量：共 ${report.totalRows} 条记录`,
+    '说明：小程序无本地数据库，本项检查的是本机数据缓存（存储完整性 / 引用校验 / 数据量），全程只读。',
+    '',
+    healthy
+      ? '数据完整可正常使用。为防手机丢失 / 卸载清空，建议定期到「导出备份」将数据另存到网盘或微信。'
+      : '检测到异常，当前不影响继续使用；为稳妥建议先「导出备份」，必要时可在本页做一次恢复演练，并联系开发者排查。'
+  ]
+  uni.showModal({
+    title: healthy ? '数据库自检通过' : '数据库自检发现异常',
+    content: lines.join('\n'),
+    showCancel: false,
+    confirmText: '知道了'
   })
 }
 </script>
@@ -200,178 +453,79 @@ function copyText(text: string) {
 .card {
   background: #fff;
   border-radius: 20rpx;
-  padding: 24rpx;
+  padding: 28rpx;
+  margin-bottom: 16rpx;
   box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
 }
 
-.empty-card {
-  margin-top: 90rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 60rpx 44rpx;
-  text-align: center;
-}
-
-.empty-icon {
-  font-size: 88rpx;
-}
-
-.empty-text {
-  margin-top: 24rpx;
-  font-size: 26rpx;
-  color: #8a93a6;
-  line-height: 1.6;
-}
-
-.block-card {
-  margin-bottom: 18rpx;
-  display: flex;
-  flex-direction: column;
-}
-
-.block-head {
+.sec-head {
   display: flex;
   align-items: center;
 }
 
-.block-title {
-  font-size: 30rpx;
+.sec-icon {
+  font-size: 34rpx;
+  margin-right: 12rpx;
+}
+
+.sec-title {
+  font-size: 32rpx;
   font-weight: 700;
   color: #1f2430;
 }
 
-.block-tag {
-  margin-left: 12rpx;
-  font-size: 20rpx;
-  padding: 4rpx 14rpx;
-  border-radius: 20rpx;
-  color: #4a5af0;
-  background: #edefff;
+.sec-body {
+  display: block;
+  margin-top: 20rpx;
+  font-size: 27rpx;
+  line-height: 1.6;
+  color: #3a4150;
 }
 
-.block-tag.warn {
-  color: #b25a00;
-  background: #fff1e0;
+.sec-sub {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 27rpx;
+  line-height: 1.6;
+  color: #8a93a6;
 }
 
-.block-desc {
-  margin-top: 12rpx;
-  font-size: 25rpx;
-  line-height: 1.65;
-  color: #5a6273;
+.row {
+  display: flex;
+  align-items: center;
 }
 
-.block-tip {
-  margin-top: 12rpx;
-  font-size: 22rpx;
-  color: #b6bcc9;
-}
-
-.primary-btn {
-  margin-top: 22rpx;
-  text-align: center;
-  padding: 22rpx 0;
-  border-radius: 18rpx;
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
-  color: #fff;
-  font-size: 29rpx;
-  font-weight: 600;
-}
-
-.primary-btn.disabled {
+.row.disabled {
   opacity: 0.6;
 }
 
-.ghost-style {
-  background: linear-gradient(135deg, #5a6273 0%, #8a93a6 100%);
+.row-icon {
+  font-size: 40rpx;
+  margin-right: 20rpx;
 }
 
-.json-area {
-  margin-top: 20rpx;
-  border: 1rpx solid #e3e6ef;
-  border-radius: 16rpx;
-  overflow: hidden;
-}
-
-.json-head {
+.row-main {
+  flex: 1;
   display: flex;
-  align-items: center;
-  background: #f7f8fb;
-  padding: 14rpx 18rpx;
+  flex-direction: column;
 }
 
-.json-title {
-  font-size: 24rpx;
+.row-title {
+  font-size: 30rpx;
   font-weight: 600;
   color: #1f2430;
 }
 
-.json-truncate {
-  margin-left: 12rpx;
-  font-size: 20rpx;
-  color: #b25a00;
-}
-
-.json-meta {
-  margin-left: auto;
-  font-size: 20rpx;
+.row-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
   color: #8a93a6;
 }
 
-.json-scroll {
-  max-height: 440rpx;
-  background: #fbfcff;
-}
-
-.json-scroll.short {
-  max-height: 300rpx;
-}
-
-.json-text {
-  display: block;
-  padding: 16rpx 18rpx;
-  font-family: 'Courier New', Consolas, monospace;
-  font-size: 20rpx;
-  line-height: 1.6;
-  color: #3a4150;
-  word-break: break-all;
-  white-space: pre-wrap;
-}
-
-.btn-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: 16rpx;
-  padding: 12rpx 16rpx;
-  border-top: 1rpx solid #f0f1f5;
-}
-
-.ghost-btn {
-  padding: 14rpx 40rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #4a5af0;
-  color: #4a5af0;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-
-.btn-hover {
-  opacity: 0.7;
-}
-
-.err-text {
-  margin-top: 14rpx;
-  font-size: 24rpx;
-  color: #c33b3b;
-}
-
-.foot-tip {
-  display: block;
-  margin-top: 6rpx;
-  text-align: center;
-  font-size: 22rpx;
+.row-arrow {
+  margin-left: 16rpx;
+  font-size: 40rpx;
   color: #b6bcc9;
-  line-height: 1.6;
 }
 </style>

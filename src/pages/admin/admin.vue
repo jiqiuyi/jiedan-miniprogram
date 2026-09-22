@@ -1,6 +1,6 @@
 <template>
   <view class="page">
-    <!-- 无权限 -->
+    <!-- 无权限（等价 App 侧 role != admin 不可见；小程序经 URL 可达，故在此兜底提示） -->
     <view v-if="denied" class="card empty-card">
       <text class="empty-icon">🔒</text>
       <text class="empty-title">仅管理员可访问</text>
@@ -8,150 +8,191 @@
       <view class="primary-btn" @tap="goBack">返回</view>
     </view>
 
-    <!-- 加载失败 -->
-    <view v-else-if="loadError" class="card empty-card">
-      <text class="empty-icon">⚠️</text>
-      <text class="empty-text">{{ loadError }}</text>
-      <view class="primary-btn" @tap="loadAll">重新加载</view>
-    </view>
-
-    <!-- 加载中 -->
-    <view v-else-if="loading" class="card loading-card">
-      <text class="loading-text">加载中…</text>
-    </view>
-
-    <!-- 数据态 -->
     <template v-else>
       <view class="head-row">
-        <text class="page-title">经营概览</text>
-        <text class="refresh-link" @tap="loadAll">刷新</text>
+        <text class="page-title">管理后台</text>
+        <text class="refresh-link" @tap="ensureLoad(activeTab)">刷新</text>
       </view>
 
-      <!-- 概览卡片 -->
-      <view class="stat-grid">
-        <view class="stat-item" v-for="s in statCards" :key="s.label">
-          <text class="stat-num">{{ s.value }}</text>
-          <text class="stat-label">{{ s.label }}</text>
-        </view>
-      </view>
-
-      <!-- 近 7 日新增 -->
-      <view class="card trend-card">
-        <view class="card-title">近 7 日新增用户</view>
-        <view class="trend-row">
-          <view v-for="d in trend" :key="d.date" class="trend-item">
-            <text class="trend-count">{{ d.count }}</text>
-            <text class="trend-date">{{ shortDate(d.date) }}</text>
+      <!-- Tab：待确认 / 抽查 / 返现 / 待打款 / 收款配置 / 服务状态 / 操作日志 -->
+      <scroll-view class="tab-bar" scroll-x :show-scrollbar="false">
+        <view class="tab-inner">
+          <view
+            v-for="(t, i) in tabs"
+            :key="t.key"
+            class="tab-item"
+            :class="{ active: activeTab === i }"
+            @tap="switchTab(i)"
+          >
+            {{ t.label }}
           </view>
         </view>
-      </view>
+      </scroll-view>
 
-      <!-- Tab -->
-      <view class="tab-bar">
-        <view
-          v-for="(t, i) in tabs"
-          :key="t.key"
-          class="tab-item"
-          :class="{ active: activeTab === i }"
-          @tap="activeTab = i"
-        >
-          {{ t.label }}
-        </view>
-      </view>
-
-      <!-- 订单 -->
+      <!-- ==================== 待确认 ==================== -->
       <view v-if="activeTab === 0" class="list-wrap">
-        <view v-if="orders.length === 0" class="card empty-mini">
-          <text class="empty-text">暂无订单数据</text>
+        <view v-if="confirming.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
+        </view>
+        <view v-else-if="confirming.error" class="card empty-mini">
+          <text class="empty-text">{{ confirming.error }}</text>
+        </view>
+        <view v-else-if="confirming.list.length === 0" class="card empty-mini">
+          <text class="empty-text">暂无待确认订单</text>
         </view>
         <view v-else class="list">
-          <view v-for="o in shownOrders" :key="o.id" class="card list-card">
+          <view v-for="(o, i) in confirming.list" :key="i" class="card list-card">
             <view class="row-head">
-              <text class="order-no">{{ o.orderNo }}</text>
-              <text class="status-tag" :class="'st-' + o.status">{{ orderStatus(o.status) }}</text>
+              <text class="order-no">订单号 {{ o.orderNo || '-' }}</text>
+              <text class="status-tag st-pending">待核实</text>
             </view>
-            <view class="row-line"><text class="kv-label">用户</text><text class="kv-value">#{{ o.userId }}</text></view>
-            <view class="row-line"><text class="kv-label">方案</text><text class="kv-value">{{ planLabel(o.plan) }}</text></view>
-            <view class="row-line"><text class="kv-label">金额</text><text class="kv-value strong">¥{{ formatAmount(o.amount) }}</text></view>
-            <view v-if="o.inviter" class="row-line">
-              <text class="kv-label">邀请人</text><text class="kv-value">#{{ o.inviter }}（返现 ¥{{ formatAmount(o.rebate) }}）</text>
+            <view class="row-line">
+              <text class="kv-value">金额 ¥{{ formatYuan(o.amount) }} · 用户#{{ o.userId }}</text>
             </view>
-            <view v-if="o.paidAt" class="row-line"><text class="kv-label">支付时间</text><text class="kv-value">{{ formatDateTime(o.paidAt) }}</text></view>
           </view>
-          <view v-if="orders.length > 50" class="more-tip">仅显示前 50 条，共 {{ orders.length }} 条</view>
         </view>
       </view>
 
-      <!-- 抽查 -->
+      <!-- ==================== 抽查 ==================== -->
       <view v-else-if="activeTab === 1" class="list-wrap">
-        <view v-if="spotchecks.length === 0" class="card empty-mini">
+        <view v-if="spotcheck.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
+        </view>
+        <view v-else-if="spotcheck.error" class="card empty-mini">
+          <text class="empty-text">{{ spotcheck.error }}</text>
+        </view>
+        <view v-else-if="spotcheck.list.length === 0" class="card empty-mini">
           <text class="empty-text">暂无抽查单</text>
         </view>
         <view v-else class="list">
-          <view v-for="(s, idx) in shownSpotchecks" :key="idx" class="card list-card">
+          <view v-for="(s, i) in spotcheck.list" :key="i" class="card list-card">
             <view class="row-head">
-              <text class="order-no">抽查 #{{ String(s.id ?? '') }}</text>
-              <text class="status-tag" :class="'st-' + spotStatusKey(s)">{{ spotStatusText(s) }}</text>
+              <text class="order-no">抽查 #{{ s.id }} · {{ spotOrderAmount(s) }}</text>
             </view>
-            <view v-if="scAmount(s) !== ''" class="row-line">
-              <text class="kv-label">上报金额</text><text class="kv-value strong">¥{{ scAmount(s) }}</text>
+            <view class="row-line">
+              <text class="kv-value">{{ s.reason || '' }}</text>
             </view>
-            <view v-if="s.reason" class="row-line"><text class="kv-label">原因</text><text class="kv-value">{{ s.reason }}</text></view>
-            <view v-if="s.reportedAt" class="row-line"><text class="kv-label">上报时间</text><text class="kv-value">{{ formatDateTime(s.reportedAt) }}</text></view>
+            <view class="row-line">
+              <text class="kv-value">上报金额 {{ fmt(s.reportedAmount) }} · 时间 {{ fmt(s.reportedAt) }}</text>
+            </view>
+            <view class="audit-row">
+              <view class="audit-btn approve" @tap="review(s, 'approve')">通过</view>
+              <view class="audit-btn reject" @tap="review(s, 'reject')">驳回</view>
+            </view>
           </view>
-          <view v-if="spotchecks.length > 30" class="more-tip">仅显示前 30 条，共 {{ spotchecks.length }} 条</view>
         </view>
       </view>
 
-      <!-- 返现 -->
+      <!-- ==================== 返现 ==================== -->
       <view v-else-if="activeTab === 2" class="list-wrap">
-        <view v-if="rebates.length === 0" class="card empty-mini">
-          <text class="empty-text">暂无返现记录</text>
+        <view v-if="rebate.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
         </view>
-        <view v-else>
-          <view class="list">
-            <view v-for="r in shownRebates" :key="r.id" class="card list-card">
-              <view class="row-head">
-                <text class="order-no">{{ r.orderNo }}</text>
-                <text class="kv-value strong">返 ¥{{ formatAmount(r.rebate) }}</text>
-              </view>
-              <view class="row-line"><text class="kv-label">用户</text><text class="kv-value">#{{ r.userId }}</text></view>
-              <view class="row-line"><text class="kv-label">邀请人</text><text class="kv-value">#{{ r.inviter }}</text></view>
-              <view class="row-line"><text class="kv-label">订单金额</text><text class="kv-value">¥{{ formatAmount(r.amount) }}</text></view>
-              <view v-if="r.paidAt" class="row-line"><text class="kv-label">返现时间</text><text class="kv-value">{{ formatDateTime(r.paidAt) }}</text></view>
-            </view>
-            <view v-if="rebates.length > 30" class="more-tip">仅显示前 30 条明细，共 {{ rebates.length }} 条</view>
+        <template v-else>
+          <view class="card info-card">
+            <text class="info-line">累计返现 ¥{{ formatYuan(rebate.totalRebate) }} · 待打款 ¥{{ formatYuan(rebate.totalPayout) }}</text>
           </view>
-          <view v-if="rebateTotals.length > 0" class="card totals-card">
-            <view class="card-title">邀请用户累计返现</view>
-            <view v-for="t in rebateTotals" :key="t.id" class="totals-row">
-              <text class="totals-name">{{ t.nickname || t.phone }}</text>
-              <text class="totals-val">¥{{ formatAmount(t.rebateTotal) }}</text>
+          <view v-if="rebate.list.length > 0" class="list">
+            <view v-for="(d, i) in rebate.list" :key="i" class="card list-card">
+              <view class="row-head">
+                <text class="order-no">返现 ¥{{ formatYuan(d.rebate) }}</text>
+              </view>
+              <view class="row-line">
+                <text class="kv-value">来自 {{ d.fromNickname || d.fromPhone || '-' }}</text>
+              </view>
             </view>
+          </view>
+        </template>
+      </view>
+
+      <!-- ==================== 待打款 ==================== -->
+      <view v-else-if="activeTab === 3" class="list-wrap">
+        <view v-if="payout.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
+        </view>
+        <view v-else-if="payout.list.length === 0" class="card empty-mini">
+          <text class="empty-text">暂无可打款返现</text>
+        </view>
+        <template v-else>
+          <view class="card info-card">
+            <text class="info-line">待打款合计 ¥{{ formatYuan(payout.total) }}</text>
+          </view>
+          <view class="list">
+            <view v-for="(p, i) in payout.list" :key="i" class="card list-card">
+              <view class="row-head">
+                <text class="order-no">{{ p.nickname || p.phone || '-' }} · ¥{{ formatYuan(p.rebate) }}</text>
+              </view>
+              <view class="row-line">
+                <text class="kv-value">可提现 ¥{{ formatYuan(p.available) }}</text>
+              </view>
+            </view>
+          </view>
+          <view class="foot-note">返现由推广方可随时在钱包提现，此处仅作汇总参考。</view>
+        </template>
+      </view>
+
+      <!-- ==================== 收款配置 ==================== -->
+      <view v-else-if="activeTab === 4" class="list-wrap">
+        <view v-if="qrcode.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
+        </view>
+        <view v-else class="card form-card">
+          <text class="tip-text">收款方式链接（App 端点一下直接拉起对应支付）：</text>
+          <text class="field-label">微信收款链接</text>
+          <input
+            v-model="qrcode.wechat"
+            class="field-input"
+            placeholder="如 weixin://... 或小程序码链接"
+            placeholder-class="ph"
+          />
+          <text class="field-label">支付宝收款链接</text>
+          <input
+            v-model="qrcode.alipay"
+            class="field-input"
+            placeholder="如 alipays://... 或收款页 https://..."
+            placeholder-class="ph"
+          />
+          <text class="tip-sub">留空表示未配置该渠道；未配置的渠道在 App 端会提示联系商家。</text>
+          <view class="primary-btn full" @tap="saveQrcode">
+            {{ qrcode.saving ? '保存中…' : '保存配置' }}
+          </view>
+          <view class="outline-btn" @tap="copyQrcode">复制收款码链接</view>
+        </view>
+      </view>
+
+      <!-- ==================== 服务状态 ==================== -->
+      <view v-else-if="activeTab === 5" class="list-wrap">
+        <view v-if="listener.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
+        </view>
+        <view v-else class="card">
+          <view v-for="(it, i) in listenerItems" :key="i" class="kv-row">
+            <text class="kv-row-label">{{ it.label }}</text>
+            <text class="kv-row-value">{{ it.value }}</text>
           </view>
         </view>
       </view>
 
-      <!-- 待打款 -->
+      <!-- ==================== 操作日志 ==================== -->
       <view v-else class="list-wrap">
-        <view class="card summary-card">
-          <text class="summary-label">当前待返现合计</text>
-          <text class="summary-num">¥{{ formatAmount(payoutTotal) }}</text>
+        <view v-if="logs.loading" class="card loading-card">
+          <text class="loading-text">加载中…</text>
         </view>
-        <view v-if="payouts.length === 0" class="card empty-mini">
-          <text class="empty-text">暂无待打款记录</text>
+        <view v-else-if="logs.list.length === 0" class="card empty-mini">
+          <text class="empty-text">暂无操作日志</text>
         </view>
         <view v-else class="list">
-          <view v-for="p in shownPayouts" :key="p.id" class="card list-card">
+          <view v-for="(l, i) in logs.list" :key="i" class="card list-card">
             <view class="row-head">
-              <text class="order-no">{{ p.orderNo }}</text>
-              <text class="kv-value strong">¥{{ formatAmount(p.rebate) }}</text>
+              <text class="order-no">{{ l.action || '' }} · 操作人#{{ l.adminId }}</text>
             </view>
-            <view class="row-line"><text class="kv-label">用户</text><text class="kv-value">#{{ p.userId }}</text></view>
-            <view class="row-line"><text class="kv-label">邀请人</text><text class="kv-value">#{{ p.inviter }}</text></view>
-            <view class="row-line"><text class="kv-label">订单金额</text><text class="kv-value">¥{{ formatAmount(p.amount) }}</text></view>
+            <view class="row-line">
+              <text class="kv-value">{{ l.detail || '' }}</text>
+            </view>
+            <view class="row-line">
+              <text class="kv-value dim">{{ logTime(l.at) }}</text>
+            </view>
           </view>
-          <view v-if="payouts.length > 30" class="more-tip">仅显示前 30 条，共 {{ payouts.length }} 条</view>
         </view>
       </view>
     </template>
@@ -159,87 +200,317 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+/**
+ * 管理后台（仅管理员可访问），7 个 Tab 与 App 正本 admin_page.dart 逐项对齐：
+ * 待确认 / 抽查 / 返现 / 待打款 / 收款配置 / 服务状态 / 操作日志。
+ * 交互等价：SnackBar→uni.showToast、AppEmpty→空态卡片、下拉刷新→切页/刷新按钮重新拉取。
+ * 金额字段统一走 formatYuan（元），在此不做金额单位改动。
+ */
+import { computed, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { formatAmount, formatDateTime } from '@/utils/format'
+import { formatYuan, formatDateTime } from '@/utils/format'
 import {
-  fetchAdminStats,
   fetchAdminOrders,
   fetchAdminSpotchecks,
   fetchAdminRebates,
   fetchAdminPayouts,
-  type AdminStats,
+  reviewAdminSpotcheck,
+  fetchAdminQrcode,
+  saveAdminQrcode,
+  fetchAdminListener,
+  fetchAdminLogs,
   type AdminOrder,
   type AdminSpotcheck,
-  type AdminRebate,
-  type AdminRebateTotal,
-  type AdminPayout
+  type AdminRebateDetail,
+  type AdminPayoutRow,
+  type AdminLog
 } from '@/api/admin'
 
-type Row = Record<string, unknown>
+const denied = ref(false)
+const activeTab = ref(0)
+
+const tabs = [
+  { key: 'confirming', label: '待确认' },
+  { key: 'spotcheck', label: '抽查' },
+  { key: 'rebate', label: '返现' },
+  { key: 'payout', label: '待打款' },
+  { key: 'qrcode', label: '收款配置' },
+  { key: 'listener', label: '服务状态' },
+  { key: 'log', label: '操作日志' }
+]
+
+const confirming = reactive({ loading: false, error: '', list: [] as AdminOrder[] })
+const spotcheck = reactive({ loading: false, error: '', list: [] as AdminSpotcheck[] })
+const rebate = reactive({
+  loading: false,
+  list: [] as AdminRebateDetail[],
+  totalRebate: 0,
+  totalPayout: 0
+})
+const payout = reactive({ loading: false, list: [] as AdminPayoutRow[], total: 0 })
+const qrcode = reactive({ loading: false, saving: false, wechat: '', alipay: '' })
+const listener = reactive({ loading: false, data: {} as Record<string, unknown> })
+const logs = reactive({ loading: false, list: [] as AdminLog[] })
+
+/** 401/403 视为无权限，整体切换为「仅管理员可访问」 */
+function handleDenied(res: { ok: boolean; statusCode: number }): boolean {
+  if (!res.ok && (res.statusCode === 401 || res.statusCode === 403)) {
+    denied.value = true
+    confirming.loading = false
+    spotcheck.loading = false
+    rebate.loading = false
+    payout.loading = false
+    qrcode.loading = false
+    listener.loading = false
+    logs.loading = false
+    return true
+  }
+  return false
+}
+
+function toast(msg: string) {
+  uni.showToast({ title: msg, icon: 'none' })
+}
 
 function num(v: unknown): number {
   const n = Number(v ?? 0)
   return Number.isFinite(n) ? n : 0
 }
 
-const loading = ref(true)
-const denied = ref(false)
-const loadError = ref('')
+/** 与正本 _fmt 一致：时间戳（>1e12）按时间展示，其余按金额展示，空值 '-' */
+function fmt(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '-'
+  if (typeof v === 'number') {
+    return v > 1e12 ? formatDateTime(v) : formatYuan(v)
+  }
+  const n = Number(v)
+  if (typeof v === 'string' && Number.isFinite(n) && n > 1e12) return formatDateTime(n)
+  return String(v)
+}
 
-const stats = ref<AdminStats | null>(null)
-const orders = ref<AdminOrder[]>([])
-const spotchecks = ref<AdminSpotcheck[]>([])
-const rebates = ref<AdminRebate[]>([])
-const rebateTotals = ref<AdminRebateTotal[]>([])
-const payouts = ref<AdminPayout[]>([])
-const payoutTotal = ref(0)
+/** 抽查单标题里的订单金额（正本：order.amount，为空时 '-'） */
+function spotOrderAmount(s: AdminSpotcheck): string {
+  const order = s.order
+  const v = order ? order['amount'] : null
+  if (v === null || v === undefined || v === '') return '-'
+  return `¥${formatYuan(v as number | string)}`
+}
 
-const activeTab = ref(0)
-const tabs = [
-  { key: 'orders', label: '订单' },
-  { key: 'spotcheck', label: '抽查' },
-  { key: 'rebate', label: '返现' },
-  { key: 'payout', label: '待打款' }
-]
+/** 操作日志时间（正本 _time：毫秒时间戳 → YYYY-MM-DD HH:mm） */
+function logTime(v: unknown): string {
+  if (typeof v !== 'number') return '-'
+  return formatDateTime(v)
+}
 
-onShow(() => {
-  loadAll()
+const listenerItems = computed(() => {
+  const d = listener.data
+  return [
+    { label: '今日上报', value: String(d['todayReports'] ?? 0) },
+    { label: '今日匹配成功', value: String(d['todayMatched'] ?? 0) },
+    { label: '今日进入抽查', value: String(d['todaySpotcheck'] ?? 0) },
+    { label: '收码配置', value: d['qrcodeConfigured'] === true ? '已配置' : '未配置' },
+    { label: '累计上报', value: String(d['totalReports'] ?? 0) }
+  ]
 })
 
-async function loadAll() {
-  loading.value = true
-  denied.value = false
-  loadError.value = ''
+async function loadConfirming() {
+  confirming.loading = true
+  confirming.error = ''
   try {
-    const s = await fetchAdminStats()
-    if (!s.ok || !s.data) {
-      if (s.statusCode === 401 || s.statusCode === 403) {
-        denied.value = true
-      } else {
-        loadError.value = s.error || '数据加载失败'
-      }
-      loading.value = false
+    const res = await fetchAdminOrders('confirming')
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      confirming.list = res.data.orders || []
+    } else {
+      confirming.list = []
+      confirming.error = res.error || '数据加载失败'
+    }
+  } catch {
+    confirming.list = []
+    confirming.error = '网络异常，请稍后重试'
+  } finally {
+    confirming.loading = false
+  }
+}
+
+async function loadSpotcheck() {
+  spotcheck.loading = true
+  spotcheck.error = ''
+  try {
+    const res = await fetchAdminSpotchecks()
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      spotcheck.list = res.data.spotchecks || []
+    } else {
+      spotcheck.list = []
+      spotcheck.error = res.error || '数据加载失败'
+    }
+  } catch {
+    spotcheck.list = []
+    spotcheck.error = '网络异常，请稍后重试'
+  } finally {
+    spotcheck.loading = false
+  }
+}
+
+async function loadRebate() {
+  rebate.loading = true
+  try {
+    const res = await fetchAdminRebates()
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      rebate.list = res.data.details || []
+      rebate.totalRebate = num(res.data.totals?.totalRebate)
+      rebate.totalPayout = num(res.data.totals?.totalPayout)
+    } else {
+      rebate.list = []
+      rebate.totalRebate = 0
+      rebate.totalPayout = 0
+      toast(res.error || '数据加载失败')
+    }
+  } catch {
+    rebate.list = []
+    rebate.totalRebate = 0
+    rebate.totalPayout = 0
+    toast('网络异常，请稍后重试')
+  } finally {
+    rebate.loading = false
+  }
+}
+
+async function loadPayout() {
+  payout.loading = true
+  try {
+    const res = await fetchAdminPayouts()
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      payout.list = res.data.payouts || []
+      payout.total = num(res.data.totalRebate)
+    } else {
+      payout.list = []
+      payout.total = 0
+      toast(res.error || '数据加载失败')
+    }
+  } catch {
+    payout.list = []
+    payout.total = 0
+    toast('网络异常，请稍后重试')
+  } finally {
+    payout.loading = false
+  }
+}
+
+async function loadQrcode() {
+  qrcode.loading = true
+  try {
+    const res = await fetchAdminQrcode()
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      qrcode.wechat = (res.data.wechat ?? '').toString()
+      qrcode.alipay = (res.data.alipay ?? '').toString()
+    } else {
+      toast(res.error || '数据加载失败')
+    }
+  } catch {
+    toast('网络异常，请稍后重试')
+  } finally {
+    qrcode.loading = false
+  }
+}
+
+async function loadListener() {
+  listener.loading = true
+  try {
+    const res = await fetchAdminListener()
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      listener.data = res.data as Record<string, unknown>
+    } else {
+      listener.data = { error: res.error || '数据加载失败' }
+    }
+  } catch {
+    listener.data = { error: '网络异常，请稍后重试' }
+  } finally {
+    listener.loading = false
+  }
+}
+
+async function loadLogs() {
+  logs.loading = true
+  try {
+    const res = await fetchAdminLogs()
+    if (handleDenied(res)) return
+    if (res.ok && res.data) {
+      logs.list = res.data.logs || []
+    } else {
+      logs.list = []
+      toast(res.error || '数据加载失败')
+    }
+  } catch {
+    logs.list = []
+    toast('网络异常，请稍后重试')
+  } finally {
+    logs.loading = false
+  }
+}
+
+/** 各 Tab 进入时按需拉取（等价 App 各 Tab 的 initState 加载） */
+function ensureLoad(i: number) {
+  if (denied.value) return
+  if (i === 0) loadConfirming()
+  else if (i === 1) loadSpotcheck()
+  else if (i === 2) loadRebate()
+  else if (i === 3) loadPayout()
+  else if (i === 4) loadQrcode()
+  else if (i === 5) loadListener()
+  else loadLogs()
+}
+
+function switchTab(i: number) {
+  activeTab.value = i
+  ensureLoad(i)
+}
+
+async function review(item: AdminSpotcheck, action: 'approve' | 'reject') {
+  try {
+    const res = await reviewAdminSpotcheck(Number(item.id), action)
+    if (handleDenied(res)) return
+    if (!res.ok) {
+      toast(res.error || '操作失败')
       return
     }
-    stats.value = s.data
-    const [o, sc, r, p] = await Promise.all([
-      fetchAdminOrders('all').catch(() => null),
-      fetchAdminSpotchecks().catch(() => null),
-      fetchAdminRebates().catch(() => null),
-      fetchAdminPayouts().catch(() => null)
-    ])
-    orders.value = o?.ok && o.data ? o.data.orders || [] : []
-    spotchecks.value = sc?.ok && sc.data ? sc.data.spotchecks || [] : []
-    rebates.value = r?.ok && r.data ? r.data.details || [] : []
-    rebateTotals.value = r?.ok && r.data ? r.data.totals || [] : []
-    payouts.value = p?.ok && p.data ? p.data.payouts || [] : []
-    payoutTotal.value = p?.ok && p.data ? num(p.data.totalRebate) : 0
+    toast(action === 'approve' ? '已通过' : '已驳回')
+    loadSpotcheck()
   } catch {
-    loadError.value = '网络异常，请稍后重试'
-  } finally {
-    loading.value = false
+    toast('网络异常，请稍后重试')
   }
+}
+
+async function saveQrcode() {
+  if (qrcode.saving) return
+  qrcode.saving = true
+  try {
+    const res = await saveAdminQrcode(qrcode.wechat.trim(), qrcode.alipay.trim())
+    if (handleDenied(res)) return
+    if (!res.ok) {
+      toast(res.error || '保存失败')
+      return
+    }
+    toast('收款方式已更新')
+  } catch {
+    toast('网络异常，请稍后重试')
+  } finally {
+    qrcode.saving = false
+  }
+}
+
+function copyQrcode() {
+  const link = qrcode.wechat.trim() || qrcode.alipay.trim()
+  if (!link) return
+  uni.setClipboardData({
+    data: link,
+    success: () => toast('已复制到剪贴板')
+  })
 }
 
 function goBack() {
@@ -248,75 +519,9 @@ function goBack() {
   })
 }
 
-const statCards = computed(() => {
-  const s = stats.value
-  if (!s) return []
-  return [
-    { label: '累计用户', value: String(num(s.total_users)) },
-    { label: '今日新增', value: String(num(s.users_today)) },
-    { label: '付费用户', value: String(num(s.paid_users)) },
-    { label: '专业版会员', value: String(num(s.vip_users)) },
-    { label: '今日收入', value: `¥${formatAmount(s.income_today)}` },
-    { label: '累计收入', value: `¥${formatAmount(s.total_income)}` },
-    { label: '邀请注册', value: String(num(s.invitee_count)) },
-    { label: '待处理反馈', value: String(num((s.feedback as Row | null)?.pending ?? 0)) }
-  ]
+onShow(() => {
+  ensureLoad(activeTab.value)
 })
-
-const trend = computed(() => {
-  const s = stats.value
-  const list = (s?.new_users_last7d as unknown) || []
-  return Array.isArray(list) ? list.slice(-7) : []
-})
-
-function shortDate(d: string | unknown): string {
-  const s = String(d ?? '')
-  if (!s) return '-'
-  const parts = s.split('-')
-  return parts.length >= 3 ? `${parts[1]}-${parts[2]}` : s
-}
-
-function orderStatus(v: unknown): string {
-  const m: Record<string, string> = { confirming: '待确认', spotcheck: '抽查中', paid: '已支付', pending: '待支付' }
-  return m[String(v ?? '')] || String(v ?? '')
-}
-
-function planLabel(v: unknown): string {
-  const m: Record<string, string> = {
-    firstMonth: '首月特惠',
-    month: '月付',
-    year: '年付',
-    forever: '永久'
-  }
-  return m[String(v ?? '')] || String(v ?? '')
-}
-
-const shownOrders = computed(() => orders.value.slice(0, 50))
-const shownSpotchecks = computed(() => spotchecks.value.slice(0, 30))
-const shownRebates = computed(() => rebates.value.slice(0, 30))
-const shownPayouts = computed(() => payouts.value.slice(0, 30))
-
-function scAmount(s: AdminSpotcheck): string {
-  const row = s as Row
-  const ra = num(row['reportedAmount'])
-  if (ra > 0) return formatAmount(ra)
-  const o = row['order']
-  if (o && typeof o === 'object') {
-    const oa = num((o as Row)['amount'])
-    if (oa > 0) return formatAmount(oa)
-  }
-  return ''
-}
-
-function spotStatusKey(s: AdminSpotcheck): string {
-  return String((s as Row)['status'] ?? '')
-}
-
-function spotStatusText(s: AdminSpotcheck): string {
-  const m: Record<string, string> = { pending: '待处理', processing: '处理中', resolved: '已处理', rejected: '已驳回' }
-  const k = spotStatusKey(s)
-  return m[k] || (k ? k : '待处理')
-}
 </script>
 
 <style lang="scss" scoped>
@@ -362,6 +567,11 @@ function spotStatusText(s: AdminSpotcheck): string {
   line-height: 1.6;
 }
 
+.empty-mini {
+  padding: 50rpx 30rpx;
+  text-align: center;
+}
+
 .primary-btn {
   margin-top: 32rpx;
   padding: 20rpx 72rpx;
@@ -370,10 +580,26 @@ function spotStatusText(s: AdminSpotcheck): string {
   color: #fff;
   font-size: 30rpx;
   font-weight: 600;
+  text-align: center;
+}
+
+.primary-btn.full {
+  display: block;
+}
+
+.outline-btn {
+  margin-top: 18rpx;
+  padding: 18rpx 0;
+  border-radius: 44rpx;
+  border: 1rpx solid #4a5af0;
+  color: #4a5af0;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
 }
 
 .loading-card {
-  margin-top: 90rpx;
+  margin-top: 60rpx;
   padding: 60rpx;
   text-align: center;
 }
@@ -402,88 +628,24 @@ function spotStatusText(s: AdminSpotcheck): string {
   padding: 8rpx 12rpx;
 }
 
-.stat-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14rpx;
-}
-
-.stat-item {
-  width: calc((100% - 14rpx) / 2);
-  box-sizing: border-box;
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 22rpx 24rpx;
-  box-shadow: 0 4rpx 16rpx rgba(31, 36, 48, 0.05);
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-num {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #1f2430;
-  word-break: break-all;
-}
-
-.stat-label {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #8a93a6;
-}
-
-.trend-card {
-  margin-top: 16rpx;
-}
-
-.card-title {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #1f2430;
-  margin-bottom: 16rpx;
-}
-
-.trend-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 18rpx;
-}
-
-.trend-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-
-.trend-count {
-  font-size: 26rpx;
-  font-weight: 700;
-  color: #4a5af0;
-}
-
-.trend-date {
-  margin-top: 6rpx;
-  font-size: 20rpx;
-  color: #8a93a6;
-}
-
 .tab-bar {
-  margin: 20rpx 0 16rpx;
+  margin: 0 0 16rpx;
   background: #eceef6;
   border-radius: 18rpx;
+  white-space: nowrap;
+}
+
+.tab-inner {
+  display: inline-flex;
   padding: 6rpx;
-  display: flex;
 }
 
 .tab-item {
-  flex: 1;
-  text-align: center;
-  padding: 14rpx 0;
+  padding: 14rpx 24rpx;
   font-size: 26rpx;
   color: #5a6273;
   border-radius: 14rpx;
+  flex-shrink: 0;
 }
 
 .tab-item.active {
@@ -491,11 +653,6 @@ function spotStatusText(s: AdminSpotcheck): string {
   color: #1f2430;
   font-weight: 700;
   box-shadow: 0 2rpx 8rpx rgba(31, 36, 48, 0.06);
-}
-
-.empty-mini {
-  padding: 50rpx 30rpx;
-  text-align: center;
 }
 
 .list-wrap {
@@ -536,27 +693,9 @@ function spotStatusText(s: AdminSpotcheck): string {
   border-radius: 8rpx;
 }
 
-.status-tag.st-confirming,
-.status-tag.st-pending,
-.status-tag.st-processing {
+.status-tag.st-pending {
   color: #b25a00;
   background: #fff1e0;
-}
-
-.status-tag.st-spotcheck {
-  color: #8a6d1a;
-  background: #fdf6e3;
-}
-
-.status-tag.st-paid,
-.status-tag.st-resolved {
-  color: #0e8a3e;
-  background: #e4f7ec;
-}
-
-.status-tag.st-rejected {
-  color: #c33b3b;
-  background: #fdeaea;
 }
 
 .row-line {
@@ -565,71 +704,117 @@ function spotStatusText(s: AdminSpotcheck): string {
   font-size: 25rpx;
 }
 
-.kv-label {
-  width: 140rpx;
-  color: #8a93a6;
-  flex-shrink: 0;
-}
-
 .kv-value {
   color: #3a4150;
   word-break: break-all;
 }
 
-.kv-value.strong {
-  color: #1f2430;
-  font-weight: 600;
+.kv-value.dim {
+  color: #8a93a6;
+  font-size: 23rpx;
 }
 
-.more-tip {
-  margin-top: 12rpx;
-  text-align: center;
-  font-size: 22rpx;
-  color: #b6bcc9;
-}
-
-.totals-card {
-  margin-top: 18rpx;
-}
-
-.totals-row {
+.audit-row {
+  margin-top: 16rpx;
   display: flex;
-  justify-content: space-between;
-  padding: 10rpx 0;
-  border-bottom: 1rpx solid #f0f1f5;
+  justify-content: flex-end;
+  gap: 16rpx;
 }
 
-.totals-row:last-child {
-  border-bottom: none;
+.audit-btn {
+  padding: 10rpx 32rpx;
+  border-radius: 30rpx;
+  font-size: 25rpx;
+  border: 1rpx solid #dfe2ea;
 }
 
-.totals-name {
+.audit-btn.approve {
+  color: #07c160;
+  border-color: #07c160;
+}
+
+.audit-btn.reject {
+  color: #c33b3b;
+  border-color: #c33b3b;
+}
+
+.info-card {
+  margin-bottom: 16rpx;
+}
+
+.info-line {
   font-size: 26rpx;
-  color: #3a4150;
-}
-
-.totals-val {
-  font-size: 26rpx;
-  font-weight: 700;
+  font-weight: 600;
   color: #1f2430;
 }
 
-.summary-card {
-  margin-bottom: 16rpx;
-  background: linear-gradient(135deg, #4a5af0 0%, #7b6cf6 100%);
-  color: #fff;
+.foot-note {
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  color: #8a93a6;
+  line-height: 1.6;
+}
+
+.form-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.tip-text {
+  font-size: 24rpx;
+  color: #8a93a6;
+}
+
+.tip-sub {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #8a93a6;
+  line-height: 1.6;
+}
+
+.field-label {
+  margin-top: 24rpx;
+  margin-bottom: 10rpx;
+  font-size: 24rpx;
+  color: #5a6273;
+}
+
+.field-input {
+  height: 80rpx;
+  padding: 0 22rpx;
+  font-size: 26rpx;
+  color: #1f2430;
+  background: #f6f7fb;
+  border: 1rpx solid #e3e6ef;
+  border-radius: 14rpx;
+  box-sizing: border-box;
+}
+
+.ph {
+  color: #b6bcc9;
+  font-size: 24rpx;
+}
+
+.kv-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 22rpx 4rpx;
+  border-bottom: 1rpx solid #f0f1f5;
 }
 
-.summary-label {
+.kv-row:last-child {
+  border-bottom: none;
+}
+
+.kv-row-label {
   font-size: 26rpx;
-  opacity: 0.95;
+  color: #5a6273;
 }
 
-.summary-num {
-  font-size: 40rpx;
-  font-weight: 800;
+.kv-row-value {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2430;
 }
 </style>
